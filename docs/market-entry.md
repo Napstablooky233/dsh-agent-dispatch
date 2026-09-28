@@ -1,19 +1,19 @@
-# 上架 DSH 插件市场指南
+# Market Entry Guide for DSH Plugins
 
-市场站点（dshmarket）**自己不收条目**：它的列表来自精选仓库 [`awesome-dsh-plugin/awesome-dsh-plugin`](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)，站点每次打开实时请求 `https://awesome-dsh-plugin.com/plugins.json`。
+The market site (`dshmarket`) **does not accept submissions directly**: its listings come from the curated repository [`awesome-dsh-plugin/awesome-dsh-plugin`](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin), and the site requests `https://awesome-dsh-plugin.com/plugins.json` live on every page load.
 
-## 一、提交方式（已在线核对，2026-09-28）
+## 1. Submission method (verified online, 2026-09-28)
 
-精选仓库的 README **是生成物，不能手改**。提 PR 只需要**新增一个文件**：
+The curated repository's README **is a generated artifact and must not be hand-edited**. Submitting a PR requires only **adding one file**:
 
 ```
 data/plugins/<owner>__<repo>.yml
 ```
 
-本插件对应的文件名与内容都已经写好了，直接复制：
+The filename and content for this plugin have already been written. Copy them directly:
 
-- 文件：`docs/awesome-dsh-plugin/Napstablooky233__dsh-agent-dispatch.yml`
-- 内容：
+- File: `docs/awesome-dsh-plugin/Napstablooky233__dsh-agent-dispatch.yml`
+- Content:
 
 ```yaml
 url: https://github.com/Napstablooky233/dsh-agent-dispatch
@@ -24,27 +24,27 @@ description:
   zh: 一块设置面板，决定主 agent 要不要派活、准哪几个帮手上场，并把这条分工策略注入 systemPrompt 段，保存即生效。
 ```
 
-目标路径：`awesome-dsh-plugin/awesome-dsh-plugin` 仓库里的 `data/plugins/Napstablooky233__dsh-agent-dispatch.yml`。
+Target path: `awesome-dsh-plugin/awesome-dsh-plugin` repository, at `data/plugins/Napstablooky233__dsh-agent-dispatch.yml`.
 
-## 二、硬性要求（缺一不可）
+## 2. Hard requirements (all must be met)
 
-| 要求 | 本插件状态 |
+| Requirement | This Plugin |
 | --- | --- |
-| 仓库根 `package.json` 声明 `dsh.bundle`（`dsh.client` 单独声明**不算**可安装） | ✅ `dsh.bundle.patch: ./cordis.patch.yml`，且仓库根有 `cordis.patch.yml` |
-| 仓库存在至少 **1 天** | ⏳ 首次 push 于 2026-09-28（UTC），满 24 小时后才过年龄检查 |
-| 仓库带 `dsh-plugin` topic | ✅ 已加：`agent` `deepseek-harness` `dsh` `dsh-plugin` `workflow` |
-| `category` 取值来自官方集合 | ✅ `workflow`（可选值：agi ui usage theme model identity session memory tools wsl browser vision voice docs skill workflow git notify dev security remote market fun） |
-| yml 里**不要**写 `npm:` 字段 | ✅ 没写——写了会被校验直接拒 |
+| Repository root `package.json` declares `dsh.bundle` (declaring `dsh.client` alone does **not** count as installable) | Met: `dsh.bundle.patch: ./cordis.patch.yml`, and `cordis.patch.yml` exists at the repository root |
+| Repository exists for at least **1 day** | Pending: first push on 2026-09-28 (UTC); passes the age check only after 24 hours |
+| Repository has the `dsh-plugin` topic | Met: added `agent` `deepseek-harness` `dsh` `dsh-plugin` `workflow` |
+| `category` value comes from the official set | Met: `workflow` (options: agi ui usage theme model identity session memory tools wsl browser vision voice docs skill workflow git notify dev security remote market fun) |
+| Do **not** include an `npm:` field in the yml | Met: not present — including it would be rejected by validation |
 
-## 三、npm 发布是**可选**的
+## 3. npm publishing is optional
 
-官方 contributing.md 明确：**发不发布 npm 都不影响收录**，插件照样能从 GitHub 安装（`dsh plugin add`）。不发 npm 时想要更好的安装体验，可以把预构建 tarball 挂在 GitHub Release 上并在 yml 里用可选的 `tarball:` 字段指向它。
+The official `contributing.md` states: **publishing or not publishing on npm does not affect listing**; plugins can still be installed from GitHub via `dsh plugin add`. When not publishing on npm, you can attach a pre-built tarball to a GitHub Release and use the optional `tarball:` field in the yml to point to it.
 
-本插件是纯 JS、无构建步骤，从源码安装即可，**不需要** npm 发布。npm 上 `dsh-agent-dispatch` 这个名字当前是空的（2026-09-28 查 registry 返回 404），想发也能发，只是与本插件上架无关。
+This plugin is pure JS with no build step and can be installed from source. **npm publishing is not required.** The name `dsh-agent-dispatch` is currently empty on npm (checked the registry on 2026-09-28, returned 404); it can be published if desired, but it is unrelated to this plugin's listing.
 
-## 四、市场条目长什么样（观察到的真实结构）
+## 4. What a market listing looks like (observed real structure)
 
-`https://awesome-dsh-plugin.com/plugins.json`（2026-09-28 实测：`count = 4377`）里每条记录的真实字段：
+Each record at `https://awesome-dsh-plugin.com/plugins.json` (2026-09-28 measurement: `count = 4377`) has these real fields:
 
 ```json
 {
@@ -64,10 +64,10 @@ description:
 }
 ```
 
-`owner` / `page` / `stars` / `downloads` / `capabilities` / `install` / `added` 都是 CI 自动采集的，投稿时**不需要**写。
+`owner`, `page`, `stars`, `downloads`, `capabilities`, `install`, and `added` are all collected by CI automatically. **You do not need to write them.**
 
-## 五、PR 之后
+## 5. After the PR
 
-1. CI 校验条目形状（manifest、仓库年龄、格式、README 能否重新生成）——绿了只是**前提**，不是决定。
-2. 维护者会读一遍目标仓库，合并后 `main` 上自动重新生成两份 README，站点与市场随之收录。
-3. 收录**不等于**安全审查。
+1. CI validates the listing shape (manifest, repository age, format, whether the README can be regenerated) — turning green is only a **prerequisite**, not a decision.
+2. A maintainer reviews the target repository; after merging, `main` automatically regenerates both READMEs, and the site and market pick up the listing.
+3. **Listing does not equal security review.**
