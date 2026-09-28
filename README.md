@@ -1,16 +1,20 @@
+<div align="center">
+<a href="README.md"><img src="docs/assets/lang/zh-on.svg" alt="简体中文" height="30"></a>&nbsp;&nbsp;<a href="README.en.md"><img src="docs/assets/lang/en-off.svg" alt="English" height="30"></a>
+</div>
+
 # dsh-agent-dispatch · 帮手调度台
 
-一个 DSH 插件：在设置页给出一块面板，决定主 agent 要不要别的 agent 帮忙、准哪几个帮手上场，并且**真的生效**——策略以 `systemPrompt` 段的形式注入每一步，保存即生效。
+> 一块设置面板：决定主 agent 要不要别的 agent 帮忙、准哪几个帮手上场——而且**真的生效**。策略以 `systemPrompt` 段的形式注入，保存即生效。
 
-- **看得见**：一个设置分区，显示状态、通道、帮手名册（含实测首字延迟）。
+- **看得见**：一个设置分区，显示状态、通道与帮手名册（含实测首字延迟）。
 - **点得动**：总开关 / 三态模式 / 通道勾选 / 帮手勾选 / 并发上限 / 附加要求，改完点保存。
-- **真的生效**：策略文本是函数，每步重新求值；关掉时注入「本轮不派活」的明确指令。
+- **真的生效**：策略文本是函数，每步重新求值；关闭时注入「本轮不派活」的明确指令。
 
-## 它解决什么，为什么省 token
+## 它解决什么 · 为什么省 token
 
 主 agent 每推进一步都要重发完整上下文（系统提示 + 历史），按 `cacheMiss` 计费，是 token 账单的大头。独立的帮手各有独立上下文，且免费车道输入输出零成本。所以省钱的关键不是「少说话」，而是**把自包含的活挪出去**。这个插件管的就是「挪哪些、挪给谁、挪几个」。
 
-分工原则（写死在注入文本里）：简单、机械、自包含、不依赖主会话上下文的活（批量检索、逐项审计、抄改重排、列清单、翻译、格式化、初稿）派给免费帮手；最难、最需要判断、后果在意的部分（架构与关键设计、跨模块推理、正确性与安全判断、分歧裁决、最终交付）留在主 agent。
+分工原则（写死在注入文本里）：简单、机械、自包含、不依赖主会话上下文的活（批量检索、逐项审计、抄改重排、列清单、翻译、格式化、初稿）派给免费车道的帮手；最难、最需要判断、后果在意的部分（架构与关键设计、跨模块推理、正确性与安全判断、分歧裁决、最终交付）留在主 agent。
 
 ## 安装
 
@@ -48,10 +52,10 @@ node scripts/install-into-profile.mjs --revert   # 撤回到备份
 
 | 区块 | 内容 |
 | --- | --- |
-| 总开关与三态模式 | 开启/关闭；模式三种：关闭 / 先问我 / 直接派 |
+| 总开关与三态模式 | 开启 / 关闭；模式三种：关闭 / 先问我 / 直接派 |
 | 帮手通道 | workflow 扇出 / 子代理单派 / Agency 专家 / Agent Teams；没勾的通道写进禁止清单 |
-| 帮手名册 | 三层来源合并（宿主实注册 / 车道实测 / 手填 + 内置参考），每行标来源；★ 是默认主力 |
-| 派活规模 | 同时最多几个帮手（1–8）、任务超过多少步才值得派、短任务是否禁止外派 |
+| 帮手名册 | 三层来源合并（宿主已注册 / 车道实测 / 手填 + 内置参考），每行标来源；★ 是默认主力 |
+| 派活规模 | 同时最多几个帮手（1–8）、任务超过多少步才值得派、短任务是否禁止派活 |
 | 附加要求 | 原样写进注入文本 |
 | 查看注入文本 | 展开就是**真正**发给 agent 的策略，不是示意图 |
 
@@ -73,7 +77,7 @@ node scripts/install-into-profile.mjs --revert   # 撤回到备份
 | `channels.subagent` | boolean | `true` | 允许子代理单派 |
 | `channels.experts` | boolean | `false` | 允许 Agency 专家 |
 | `channels.teams` | boolean | `false` | 允许 Agent Teams |
-| `helpers.\{provider}:{model}` | object | 见下 | 键为 `provider:model`，值 `{ enabled: boolean, label?: string }` |
+| `helpers.\{provider}:{model\}` | object | 见下 | 键为 `provider:model`，值 `{ enabled: boolean, label?: string }` |
 | `primary` | string | `'our-free-model:nemotron-3-ultra-free'` | 默认主力帮手；必须是已勾选的模型，否则退回第一个已勾选 |
 | `maxHelpers` | number | 4 | 同时最多派几个（夹回 1–8） |
 | `minSteps` | number | 3 | 任务超过多少步才值得派（夹回 1–20） |
@@ -101,13 +105,13 @@ node scripts/install-into-profile.mjs --revert   # 撤回到备份
 1. **宿主 llm 服务实枚举**（来源 `llm`，标签「宿主已注册」）——唯一能证明「这个 provider/model 现在真的能调」的来源。
 2. **兄弟插件状态文件**（来源 `peer`，标签「车道实测」）——扫 `$DSH_HOME/<任意插件目录>/catalog.json` + `availability.json`，不写死名字，拿到实测首字延迟。
 3. **面板手填**（来源 `manual`，标签「手填」）——用户可填任意 `provider:model`，哪怕别的付费车道。
-4. **内置参考名册**（来源 `seed`，标签「内置参考」）——11 行 `our-free-model` 模型快照，保证面板第一次打开不空。**不是事实来源**，只是「长什么样」。
+4. **内置参考名册**（来源 `seed`，标签「内置参考」）——11 行 `our-free-model` 模型快照，保证面板第一次打开不空。**不是事实来源**，只说明「长什么样」。
 
 合并优先级：`llm 枚举 → verified=true`；`兄弟插件 availability → state / ttftMs`；`内置参考 → 只补长什么样`，不覆盖上面两者的判定。
 
 ## HTTP API
 
-全部走同源路由 `/api/agent-dispatch/*`，与 Host 半身在同一进程。**只服务本机浏览器，非 loopback 一律 403。**
+全部走同源路由 `/api/agent-dispatch/*`，与宿主半身在同一进程。**只服务本机浏览器，非 loopback 一律 403。**
 
 | 方法 | 路径 | 作用 |
 | --- | --- | --- |
@@ -123,7 +127,7 @@ node scripts/install-into-profile.mjs --revert   # 撤回到备份
 
 - 无 `webServer`：面板 API 不可用（浏览器半身不能读写配置），但 `systemPrompt` 段照常注入。
 - 无 `systemPrompt`：策略不注入（面板改完不生效），但 API 与名册正常。
-- 无 `llm`：名册只剩车道实测 + 内置参考 + 手填；手填一条 provider:model 仍然可用。
+- 无 `llm`：名册只剩车道实测 + 内置参考 + 手填；手填一条 `provider:model` 仍然可用。
 - 无任何服务：面板照常可用（纯内存配置 + 内置参考名册）。
 
 写盘失败不致命：配置先改内存并立刻生效，面板提示「写盘失败，重启后回旧值」。
@@ -136,18 +140,31 @@ node scripts/install-into-profile.mjs --revert   # 撤回到备份
 ## 开发与自测
 
 ```powershell
-node --check index.js                    # 语法检查 Host 半身
+node --check index.js                    # 语法检查宿主半身
 node --check client.js                   # 语法检查浏览器半身
 node scripts/check-i18n.mjs              # zh/en 字典同键、且代码里 t() 引用的键都在字典里
+node scripts/check-links.mjs             # Markdown 相对链接与图片目标是否真实存在
 node scripts/selftest.mjs                # 纯函数自检（策略渲染 / 配置收敛 / 名册构建），71 项
 node scripts/smoke-host.mjs              # 假 cordis ctx 下跑真实 apply()，含 403、落盘、即时生效，26 项
 node scripts/smoke-client.mjs            # 桩 React + 真 /summary 数据，把 Panel 真渲染三遍，20 项
 ```
 
-`selftest.mjs` 在临时目录造假伙伴状态，验证名册优先级、地区受限与不可用降级、配置收敛（0 并发、非法 peer、非法键名都夹回安全值）。`smoke-host.mjs` 用假 `webServer` / `systemPrompt` 服务跑真实 `apply()`，确认路由挂上、配置落盘、段文本是函数（所以「保存后下一步生效」是结构事实），覆盖非 loopback 403、坏 JSON 500、disposer 可调用。`smoke-client.mjs` 用迷你 hooks 运行时当桩 React，喂给面板的是**宿主半身真跑出来的 `/summary`**，断言渲染树里有名册键、有真注入策略的原文、引导卡看过就消失——`node --check` 抓不到「一开就是空白」这类崩法，这一层专门抓。
+`selftest.mjs` 在临时目录造假伙伴状态，验证名册优先级、地区受限与暂不可用的降级、配置收敛（0 并发、非法 peer、非法键名都夹回安全值）。`smoke-host.mjs` 用假 `webServer` / `systemPrompt` 服务跑真实 `apply()`，确认路由挂上、配置落盘、段文本是函数（所以「保存后下一步生效」是结构事实），覆盖非 loopback 403、坏 JSON 500、disposer 可调用。`smoke-client.mjs` 用迷你 hooks 运行时当桩 React，喂给面板的是**宿主半身真跑出来的 `/summary`**，断言渲染树里有名册键、有真注入策略的原文、引导卡看过就消失——`node --check` 抓不到「一开就是空白」这类崩法，这一层专门抓。
 
-`npm run check`（语法）、`npm run test`（自检）、`npm run smoke:client`（浏览器半身）、`npm run verify`（五项全跑）已配在 `package.json` 的 scripts 里。
+`npm run check`（语法）、`npm run i18n`（字典一致性）、`npm run links`（链接检查）、`npm run test`（自检）、`npm run smoke`（宿主半身）、`npm run smoke:client`（浏览器半身）、`npm run verify`（六项全跑）已配在 `package.json` 的 scripts 里。
+
+## 相关文档
+
+| 文件 | 用途 |
+| --- | --- |
+| [README.en.md](README.en.md) | 英文版（English mirror） |
+| [docs/GLOSSARY.md](docs/GLOSSARY.md) | 术语表：本仓库所有文档与界面文案的唯一口径 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南：提交信息规范、分支流程、文档约定 |
+| [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
+| [docs/market-entry.md](docs/market-entry.md) | 上架 DSH 插件市场的条目与收录规则 |
+| [docs/publish.md](docs/publish.md) | 发布流程（含需要人工授权的步骤） |
 
 ## 许可
 
 MIT。仓库：[github.com/Napstablooky233/dsh-agent-dispatch](https://github.com/Napstablooky233/dsh-agent-dispatch)。
+English version: [README.en.md](README.en.md).

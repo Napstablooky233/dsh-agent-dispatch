@@ -20,8 +20,8 @@ url: https://github.com/Napstablooky233/dsh-agent-dispatch
 name: Napstablooky233/dsh-agent-dispatch
 category: workflow
 description:
-  en: A settings panel that decides whether the main agent may delegate work and which helper agents may join, injecting that division of labour into the system prompt on every step.
-  zh: 一块设置面板，决定主 agent 要不要派活、准哪几个帮手上场，并把这条分工策略注入每一步的系统提示词。
+  en: A settings panel that decides whether the main agent may delegate work and which helpers may join, injecting that division of labor into the systemPrompt section on every step.
+  zh: 一块设置面板，决定主 agent 要不要派活、准哪几个帮手上场，并把这条分工策略注入 systemPrompt 段，保存即生效。
 ```
 
 目标路径：`awesome-dsh-plugin/awesome-dsh-plugin` 仓库里的 `data/plugins/Napstablooky233__dsh-agent-dispatch.yml`。
@@ -31,8 +31,8 @@ description:
 | 要求 | 本插件状态 |
 | --- | --- |
 | 仓库根 `package.json` 声明 `dsh.bundle`（`dsh.client` 单独声明**不算**可安装） | ✅ `dsh.bundle.patch: ./cordis.patch.yml`，且仓库根有 `cordis.patch.yml` |
-| 仓库存在至少 **1 天** | ⏳ 首次 push 后满一天才能过 CI |
-| 仓库带 `dsh-plugin` topic | ⏳ push 后在 GitHub 仓库设置里加（或 API 加） |
+| 仓库存在至少 **1 天** | ⏳ 首次 push 于 2026-09-28（UTC），满 24 小时后才过年龄检查 |
+| 仓库带 `dsh-plugin` topic | ✅ 已加：`agent` `deepseek-harness` `dsh` `dsh-plugin` `workflow` |
 | `category` 取值来自官方集合 | ✅ `workflow`（可选值：agi ui usage theme model identity session memory tools wsl browser vision voice docs skill workflow git notify dev security remote market fun） |
 | yml 里**不要**写 `npm:` 字段 | ✅ 没写——写了会被校验直接拒 |
 
