@@ -1,0 +1,11 @@
+node_modules/
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+coverage/
+dist/
+*.tgz
+.agent-dispatch/
+agent-dispatch-state.json

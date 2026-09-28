@@ -1,0 +1,747 @@
+/**
+ * dsh-agent-dispatch —— 帮手调度台（浏览器半身）。
+ *
+ * 贡献一个设置分区（`settings.section` id `agent-dispatch`）：在这一个页面上决定
+ *   1. 要不要让别的 agent 帮忙（总开关 + 关闭/询问/自动 三态）；
+ *   2. 从哪条通道派人（workflow 扇出 / 子代理单派 / Agency 专家 / Agent Teams）；
+ *   3. 准哪几个帮手模型上场——名册来自三层来源（宿主 llm 实枚举 / 兄弟插件
+ *      实测状态文件 / 内置参考 + 手填的任意 provider:model），不依赖任何插件；
+ *   4. 一次最多派几个、多长的任务才值得派；
+ *   5. 第一次用的人：顶部四步引导 + 「宿主适配」自检，解释每个功能为什么在或不在。
+ *
+ * 数据只走插件自己的同源 HTTP 路由 `/api/agent-dispatch/*`——与 Host 半身在
+ * 同一个进程里，不需要任何额外的绑定或握手。
+ *
+ * 手写 ModuleLoader 包：无构建步骤，除 shell 自带的 `react` 外无依赖；
+ * 颜色全部取自主题变量，换配色方案不破相。
+ */
+window.__ModuleLoader__.load({
+  id: 'dsh-agent-dispatch',
+  factory: require => {
+    const module = { exports: {} }
+    const exports = module.exports
+    const React = require('react')
+    const { createElement: h, Fragment, useState, useEffect, useMemo, useCallback, useRef } = React
+
+    const NS = 'settings.agentDispatch'
+    const API = '/api/agent-dispatch'
+    const inject = ['slots', 'locale']
+
+    // ── 文案（zh / en 必须同键） ───────────────────────────────────────────────
+    const DICT = {
+      zh: {
+        nav: '帮手调度',
+        title: '帮手调度台',
+        subtitle: '决定主 agent 要不要人帮忙、准谁上场',
+        loading: '正在读取配置…',
+        loadFailed: '读不到插件后端',
+        retry: '重试',
+        on: '已开启',
+        off: '已关闭',
+        statHelpers: '可用帮手',
+        statArmed: '已勾选',
+        statChannels: '通道',
+        statConcurrency: '并发上限',
+        master: '让其他 agent 帮忙',
+        masterHint: '开启后：简单、机械、自包含的活优先派给免费车道的帮手，最复杂最难、要拍板的部分留在主 agent 这里。关闭则全部自己干。',
+        mode: '派活模式',
+        'mode.off': '关闭',
+        'mode.ask': '先问我',
+        'mode.auto': '直接派',
+        'modeHint.off': '整轮不派活：不扇出、不召唤、不建队。',
+        'modeHint.ask': '派活前先问你一句「要不要派、派几个」。',
+        'modeHint.auto': '满足条件就直接派，不再问。',
+        channels: '帮手通道',
+        channelsHint: '没勾的通道这轮不许用——注入文本里会明确写禁止。',
+        roster: '帮手名册',
+        rosterHint: '三层来源合并：宿主已注册、车道实测、手填。勾上的才是允许上场的。',
+        colHelper: '帮手',
+        colSource: '来源',
+        colState: '状态',
+        srcPeer: '车道实测',
+        srcLlm: '宿主已注册',
+        srcManual: '手填',
+        srcSeed: '内置参考',
+        srcSeedHint: '这行只是内置参考，没在宿主里核到；要用请以手填方式加一条，或确认 provider 名。',
+        measuredAt: '实测于',
+        never: '尚未探测',
+        rescan: '重新扫描',
+        rescanning: '扫描中…',
+        stateAvailable: '可用',
+        stateRegion: '地区受限',
+        stateUnavailable: '暂不可用',
+        stateThrottled: '已达限额',
+        stateUnknown: '未探测',
+        ttft: '首字',
+        setPrimary: '设为默认',
+        primary: '默认主力',
+        remove: '移除',
+        addTitle: '手填一个帮手（任何 provider 都行）',
+        addProvider: 'provider',
+        addModel: 'model',
+        addBtn: '加入名册',
+        addHint: '只要宿主里有这个 provider，就能派活——插件本身不要求装过任何别的插件。',
+        addDup: '这条已经在名册里了。',
+        addBad: 'provider 与 model 都要填。',
+        scale: '派活规模',
+        concurrency: '同时最多几个帮手',
+        minSteps: '任务超过多少步才值得派',
+        longTaskOnly: '短任务不许派',
+        longTaskOnlyHint: '打开后，一句话能答完的活必须你亲自做。',
+        notes: '附加要求（会原样写进注入文本）',
+        notesPlaceholder: '例如：代码审查的活只能派给 nemotron-3-ultra-free；写文件的活不要外派。',
+        save: '保存并生效',
+        saving: '保存中…',
+        'save.ok': '已保存，下一步起生效。',
+        'save.warn': '已生效，但配置写盘失败（重启后会回到旧值）。',
+        'save.fail': '保存失败：{message}',
+        dirty: '有未保存的改动',
+        reset: '恢复默认',
+        preview: '查看实际注入给 agent 的策略文本',
+        previewHint: '预览是「已保存」的版本；改了上面的开关记得先保存。',
+        unsaved: '（有未保存改动，此处仍是旧版）',
+        footer: '配置文件：{path}',
+        version: '版本',
+        enabledPill: '总开关',
+        guideTitle: '第一次用：四步就好',
+        guideLead: '这个插件只做一件事——把「主 agent 要不要派活、派给谁」写成每一步都生效的策略。四步配完即可用，随时可关。',
+        guideS1: '勾通道：只勾你真会用的派活方式，没勾的通道会被明确禁止（比「建议不派」硬）。',
+        guideS2: '勾帮手：优先挑「车道实测」或「宿主已注册」的行；一个都没有时，用下面的手填加一条 provider:model。',
+        guideS3: '定规模：同时最多几个、多长的任务才值得派——这是省 token 与浪费并行的分界线。',
+        guideS4: '保存即生效：策略会在下一步注入；不放心就先留在「先问我」。',
+        guideDone: '知道了，开始用',
+        guideRescan: '先探一次名册',
+        adapt: '宿主适配',
+        adaptHint: '这些是插件看到的真实环境；哪一项没连上，就只少那一个功能，插件照常可用。',
+        svcWebServer: '面板 API（webServer）',
+        svcPrompt: '策略注入（systemPrompt）',
+        svcLlm: '模型枚举（llm）',
+        svcOk: '已连接',
+        svcNo: '未连接',
+        adaptWritable: '配置目录可写',
+        adaptYes: '是',
+        adaptNo: '否（仅内存生效）',
+        adaptHome: 'DSH_HOME',
+        adaptScanned: '名册刷新于',
+        adaptFound: '探到的车道',
+        adaptNoPeers: '没发现任何兄弟插件的状态文件——不影响使用，手填照样能派活。',
+        adaptModels: '个模型',
+        adaptLlmError: '模型枚举失败：{message}',
+        adaptLlmHint: 'llm 未连接或枚举为空时，名册只剩车道实测/内置参考；手填一条 provider:model 仍然可用。',
+      },
+      en: {
+        nav: 'Agent dispatch',
+        title: 'Agent dispatch',
+        subtitle: 'Decide whether other agents help — and which ones may',
+        loading: 'Loading configuration…',
+        loadFailed: 'Plugin backend unreachable',
+        retry: 'Retry',
+        on: 'On',
+        off: 'Off',
+        statHelpers: 'usable helpers',
+        statArmed: 'armed',
+        statChannels: 'channels',
+        statConcurrency: 'max parallel',
+        master: 'Let other agents help',
+        masterHint: 'On: simple, mechanical, self-contained work goes to free-lane helpers; the hardest, most consequential work — and every judgment call — stays with the main agent. Off: everything stays here.',
+        mode: 'Dispatch mode',
+        'mode.off': 'Off',
+        'mode.ask': 'Ask me',
+        'mode.auto': 'Auto',
+        'modeHint.off': 'No delegation at all this session.',
+        'modeHint.ask': 'Asks before dispatching helpers.',
+        'modeHint.auto': 'Dispatches whenever the rules match.',
+        channels: 'Helper channels',
+        channelsHint: 'Unchecked channels are explicitly forbidden in the injected policy.',
+        roster: 'Helper roster',
+        rosterHint: 'Three sources merged: host-registered, lane-probed, manual. Only checked rows may be used.',
+        colHelper: 'Helper',
+        colSource: 'Source',
+        colState: 'State',
+        srcPeer: 'lane probe',
+        srcLlm: 'host-registered',
+        srcManual: 'manual',
+        srcSeed: 'built-in',
+        srcSeedHint: 'Built-in reference only — not confirmed on this host. Add it manually, or check the provider name.',
+        measuredAt: 'measured',
+        never: 'never probed',
+        rescan: 'Rescan',
+        rescanning: 'Scanning…',
+        stateAvailable: 'available',
+        stateRegion: 'region-blocked',
+        stateUnavailable: 'unavailable',
+        stateThrottled: 'throttled',
+        stateUnknown: 'unknown',
+        ttft: 'TTFT',
+        setPrimary: 'Set as default',
+        primary: 'default',
+        remove: 'Remove',
+        addTitle: 'Add a helper by hand (any provider)',
+        addProvider: 'provider',
+        addModel: 'model',
+        addBtn: 'Add to roster',
+        addHint: 'As long as the host has that provider, dispatch works — this plugin needs no other plugin installed.',
+        addDup: 'Already in the roster.',
+        addBad: 'Both provider and model are required.',
+        scale: 'Dispatch budget',
+        concurrency: 'Max parallel helpers',
+        minSteps: 'Dispatch only past N steps',
+        longTaskOnly: 'Never dispatch quick jobs',
+        longTaskOnlyHint: 'One-liner tasks stay with the main agent.',
+        notes: 'Extra instructions (injected verbatim)',
+        notesPlaceholder: 'e.g. code review only to nemotron-3-ultra-free',
+        save: 'Save & apply',
+        saving: 'Saving…',
+        'save.ok': 'Saved — effective from the next step.',
+        'save.warn': 'Applied, but writing the file failed (reverts on restart).',
+        'save.fail': 'Save failed: {message}',
+        dirty: 'Unsaved changes',
+        reset: 'Reset to defaults',
+        preview: 'Show the policy text injected into the agent',
+        previewHint: 'Preview shows the saved version.',
+        unsaved: '(unsaved changes — this is the old version)',
+        footer: 'Config file: {path}',
+        version: 'version',
+        enabledPill: 'Master',
+        guideTitle: 'First run: four steps',
+        guideLead: 'This plugin does one thing — it renders "should the main agent delegate, and to whom" into a policy that is live on every step. Configure it in four steps; switch it off any time.',
+        guideS1: 'Pick channels: only the ones you will really use. Unchecked channels are explicitly forbidden, not merely discouraged.',
+        guideS2: 'Pick helpers: prefer rows marked lane-probe or host-registered. If there are none, add a provider:model by hand below.',
+        guideS3: 'Set the budget: how many run at once, and how long a job must be to deserve a helper.',
+        guideS4: 'Save and it applies on the next step. Stay on "Ask me" until you trust it.',
+        guideDone: 'Got it',
+        guideRescan: 'Probe the roster now',
+        adapt: 'Host adaptation',
+        adaptHint: 'What the plugin actually sees. A missing item removes one feature — never the whole panel.',
+        svcWebServer: 'Panel API (webServer)',
+        svcPrompt: 'Policy injection (systemPrompt)',
+        svcLlm: 'Model enumeration (llm)',
+        svcOk: 'connected',
+        svcNo: 'not connected',
+        adaptWritable: 'Config directory writable',
+        adaptYes: 'yes',
+        adaptNo: 'no (memory only)',
+        adaptHome: 'DSH_HOME',
+        adaptScanned: 'Roster refreshed',
+        adaptFound: 'Lanes found',
+        adaptNoPeers: 'No sibling plugin state files found — nothing breaks; manual entries still dispatch.',
+        adaptModels: 'models',
+        adaptLlmError: 'Model enumeration failed: {message}',
+        adaptLlmHint: 'Without llm enumeration the roster falls back to lane probes and built-in seeds; a manual provider:model entry still works.',
+      },
+    }
+
+    // ── 样式（全部走主题变量） ────────────────────────────────────────────────
+    const CSS = `
+.ad_root{display:flex;flex-direction:column;gap:16px;max-width:1080px;font-size:13px;line-height:1.55;color:var(--dsw-alias-label-primary);box-sizing:border-box}
+.ad_root *{box-sizing:border-box}
+.ad_hero{display:flex;flex-direction:column;gap:10px;padding:18px 20px;border-radius:16px;border:1px solid var(--dsw-alias-border-l2);background:linear-gradient(160deg,var(--dsw-alias-bg-layer-3),var(--dsw-alias-bg-layer-1))}
+.ad_h1{margin:0;font-size:17px;font-weight:650;letter-spacing:.3px}
+.ad_tagline{margin:0;color:var(--dsw-alias-label-secondary);font-size:12.5px;max-width:62ch}
+.ad_pills{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ad_pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-2);font-size:11.5px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.ad_pill b{color:var(--dsw-alias-label-primary);font-weight:600;font-variant-numeric:tabular-nums}
+.ad_dot{width:6px;height:6px;border-radius:50%;flex:none;background:var(--dsw-alias-label-tertiary)}
+.ad_dot.ok{background:var(--dsw-alias-state-success-primary)}
+.ad_dot.off{background:var(--dsw-alias-state-error-primary)}
+.ad_sec{display:flex;flex-direction:column;gap:10px}
+.ad_sechead{display:flex;align-items:baseline;gap:10px;padding-bottom:6px;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.ad_sechead h3{margin:0;font-size:13.5px;font-weight:650}
+.ad_sechint{margin-left:auto;font-size:11.5px;color:var(--dsw-alias-label-tertiary);text-align:right}
+.ad_card{padding:13px 14px;border-radius:13px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);display:flex;flex-direction:column;gap:12px}
+.ad_row{display:flex;align-items:center;gap:12px}
+.ad_rowmain{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ad_label{font-size:12.5px;font-weight:600}
+.ad_sub{font-size:11.5px;color:var(--dsw-alias-label-tertiary);line-height:1.5}
+.ad_grow{flex:1;min-width:0}
+.ad_switch{display:inline-flex;align-items:center;gap:9px;cursor:pointer;border:0;background:transparent;padding:0;font:inherit;color:inherit}
+.ad_switch i{width:34px;height:20px;border-radius:999px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);position:relative;transition:background .16s ease,border-color .16s ease;flex:none}
+.ad_switch i::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-label-secondary);transition:transform .16s ease,background .16s ease}
+.ad_switch[aria-checked="true"] i{background:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}
+.ad_switch[aria-checked="true"] i::after{transform:translateX(14px);background:var(--dsw-alias-label-on-accent)}
+.ad_seg{display:inline-flex;padding:2px;border-radius:9px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);gap:2px}
+.ad_seg button{border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11.5px;padding:3px 12px;border-radius:7px;cursor:pointer}
+.ad_seg button[aria-pressed="true"]{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px rgb(0 0 0 / 12%)}
+.ad_list{display:flex;flex-direction:column;gap:2px}
+.ad_chan{display:flex;align-items:flex-start;gap:12px;padding:9px 2px;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.ad_chan:last-child{border-bottom:0}
+.ad_table{width:100%;border-collapse:collapse;font-size:12px}
+.ad_table th{text-align:left;font-weight:500;color:var(--dsw-alias-label-tertiary);padding:0 8px 6px;border-bottom:1px solid var(--dsw-alias-border-l1);white-space:nowrap;font-size:11px}
+.ad_table td{padding:7px 8px;border-bottom:1px solid var(--dsw-alias-border-l1);vertical-align:middle}
+.ad_table tr:last-child td{border-bottom:0}
+.ad_table tr.ad_disarmed td{opacity:.55}
+.ad_id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;display:block}
+.ad_badge{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:6px;border:1px solid var(--dsw-alias-border-l1);white-space:nowrap;color:var(--dsw-alias-label-tertiary);background:transparent}
+.ad_badge.available{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}
+.ad_badge.region-blocked{color:var(--dsw-alias-state-warning-primary);border-color:var(--dsw-alias-state-warning-primary)}
+.ad_badge.unavailable,.ad_badge.throttled{color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary)}
+.ad_badge.unknown{color:var(--dsw-alias-label-tertiary);border-color:var(--dsw-alias-border-l2)}
+.ad_src{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:6px;border:1px dashed var(--dsw-alias-border-l2);color:var(--dsw-alias-label-tertiary);white-space:nowrap}
+.ad_lat{display:flex;align-items:center;gap:8px;min-width:120px}
+.ad_bar{flex:1;height:5px;border-radius:99px;background:var(--dsw-alias-bg-layer-1);overflow:hidden;min-width:40px}
+.ad_bar i{display:block;height:100%;border-radius:99px;background:var(--dsw-alias-state-business-primary)}
+.ad_bar i.slow{background:var(--dsw-alias-state-warning-primary)}
+.ad_num{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary);white-space:nowrap;font-size:11.5px}
+.ad_check{width:15px;height:15px;accent-color:var(--dsw-alias-state-business-primary);cursor:pointer;margin:0}
+.ad_star{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-tertiary);font:inherit;font-size:10.5px;padding:2px 8px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.ad_star[aria-pressed="true"]{color:var(--dsw-alias-label-on-accent);background:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}
+.ad_x{border:0;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11.5px;cursor:pointer;padding:2px 6px;border-radius:7px}
+.ad_x:hover{color:var(--dsw-alias-state-error-primary)}
+.ad_grid{display:flex;gap:14px;flex-wrap:wrap}
+.ad_field{display:flex;flex-direction:column;gap:4px;min-width:180px;flex:1}
+.ad_field>span{font-size:11.5px;color:var(--dsw-alias-label-tertiary)}
+.ad_input,.ad_area{font:inherit;font-size:12px;padding:6px 9px;border-radius:9px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);min-width:0;width:100%}
+.ad_area{min-height:64px;resize:vertical;line-height:1.6}
+.ad_input:focus,.ad_area:focus{outline:none;border-color:var(--dsw-alias-state-business-primary)}
+.ad_actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:2px}
+.ad_btn{font:inherit;font-size:12px;padding:6px 14px;border-radius:9px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);cursor:pointer}
+.ad_btn:hover:not(:disabled){border-color:var(--dsw-alias-state-business-primary)}
+.ad_btn:disabled{opacity:.55;cursor:default}
+.ad_btn.primary{background:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-on-accent)}
+.ad_status{font-size:11.5px;color:var(--dsw-alias-label-tertiary)}
+.ad_status.idle{color:var(--dsw-alias-label-tertiary)}
+.ad_status.ok{color:var(--dsw-alias-state-success-primary)}
+.ad_status.warn{color:var(--dsw-alias-state-warning-primary)}
+.ad_status.err{color:var(--dsw-alias-state-error-primary)}
+.ad_dirty{color:var(--dsw-alias-state-warning-primary);font-size:11.5px}
+.ad_details{border:1px solid var(--dsw-alias-border-l2);border-radius:11px;background:var(--dsw-alias-bg-layer-2);padding:10px 12px}
+.ad_details>summary{cursor:pointer;font-size:12px;font-weight:600}
+.ad_pre{margin:9px 0 0;padding:11px 12px;border-radius:10px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dsw-alias-label-secondary);max-height:340px;overflow:auto}
+.ad_callout{display:flex;gap:9px;padding:10px 12px;border-radius:11px;border:1px solid var(--dsw-alias-state-warning-primary);background:color-mix(in srgb,var(--dsw-alias-state-warning-primary) 10%,transparent);font-size:11.5px;line-height:1.55;color:var(--dsw-alias-label-secondary)}
+.ad_guide{border-color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 8%,var(--dsw-alias-bg-layer-3))}
+.ad_steps{display:flex;flex-direction:column;gap:8px}
+.ad_step{display:flex;gap:10px;align-items:flex-start}
+.ad_stepnum{flex:none;width:19px;height:19px;border-radius:50%;border:1px solid var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary);font-size:11px;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.ad_kv{display:flex;gap:8px;flex-wrap:wrap}
+.ad_foot{font-size:11px;color:var(--dsw-alias-label-tertiary);word-break:break-all}
+.ad_off{opacity:.5}
+`
+
+    // ── HTTP ─────────────────────────────────────────────────────────────────
+    async function api(pathname, options) {
+      const response = await fetch(`${API}${pathname}`, {
+        headers: { 'content-type': 'application/json' },
+        ...options,
+      })
+      const text = await response.text()
+      let payload = {}
+      try { payload = text === '' ? {} : JSON.parse(text) } catch { payload = {} }
+      if (!response.ok) throw new Error(payload?.error ?? `HTTP ${response.status}`)
+      return payload
+    }
+
+    // ── 小工具 ────────────────────────────────────────────────────────────────
+    function seconds(ms) {
+      if (!Number.isFinite(ms) || ms <= 0) return '—'
+      return `${(ms / 1000).toFixed(2)}s`
+    }
+    function clock(ts) {
+      if (!Number.isFinite(ts) || ts <= 0) return ''
+      try { return new Date(ts).toLocaleString() } catch { return '' }
+    }
+    function same(a, b) {
+      try { return JSON.stringify(a) === JSON.stringify(b) } catch { return true }
+    }
+    /** 帮手键 provider:model → 两段（与宿主半身的 splitKey 同规则）。 */
+    function splitKey(key) {
+      const text = String(key ?? '')
+      const at = text.indexOf(':')
+      if (at < 0) return { provider: '', model: text }
+      return { provider: text.slice(0, at), model: text.slice(at + 1) }
+    }
+    const SOURCE_LABEL = { peer: 'srcPeer', llm: 'srcLlm', manual: 'srcManual', seed: 'srcSeed' }
+
+    /** 一个主题化开关：原生 button，aria-checked 驱动 CSS。 */
+    function Toggle({ checked, onChange, label, disabled }) {
+      return h('button', {
+        type: 'button',
+        className: 'ad_switch',
+        role: 'switch',
+        'aria-checked': checked ? 'true' : 'false',
+        disabled: disabled === true,
+        onClick: () => { if (disabled !== true) onChange(!checked) },
+      }, h('i', null), label ? h('span', { className: 'ad_label' }, label) : null)
+    }
+
+    /** 来源标签：告诉用户这一行是「实测 / 宿主注册 / 手填 / 内置参考」。 */
+    function SourceTag({ row, t }) {
+      return h('span', { className: 'ad_src', title: row.source === 'seed' ? t('srcSeedHint') : '' }, t(SOURCE_LABEL[row.source] ?? 'srcSeed'))
+    }
+
+    // ── 面板 ─────────────────────────────────────────────────────────────────
+    function Panel(props) {
+      const t = props.t
+      const [data, setData] = useState(undefined)
+      const [draft, setDraft] = useState(undefined)
+      const [error, setError] = useState('')
+      const [status, setStatus] = useState({ kind: 'idle', text: '' })
+      const [busy, setBusy] = useState('')
+      const [adding, setAdding] = useState({ provider: '', model: '' })
+      const statusTimer = useRef(null)
+
+      const adopt = useCallback(payload => {
+        setData(payload)
+        setDraft(JSON.parse(JSON.stringify(payload.config)))
+      }, [])
+
+      const load = useCallback(async () => {
+        setError('')
+        try { adopt(await api('/summary')) } catch (e) { setError(String(e?.message ?? e)) }
+      }, [adopt])
+
+      useEffect(() => { void load() }, [load])
+      useEffect(() => () => { if (statusTimer.current) clearTimeout(statusTimer.current) }, [])
+
+      const flash = useCallback((kind, text) => {
+        setStatus({ kind, text })
+        if (statusTimer.current) clearTimeout(statusTimer.current)
+        statusTimer.current = setTimeout(() => setStatus({ kind: 'idle', text: '' }), 4000)
+      }, [])
+
+      const save = useCallback(async () => {
+        setBusy('save')
+        try {
+          const next = await api('/config', { method: 'POST', body: JSON.stringify({ patch: draft }) })
+          adopt(next)
+          flash(next.writeError ? 'warn' : 'ok', next.writeError ? t('save.warn') : t('save.ok'))
+        } catch (e) {
+          flash('err', t('save.fail').replace('{message}', String(e?.message ?? e)))
+        } finally { setBusy('') }
+      }, [adopt, draft, flash, t])
+
+      const reset = useCallback(async () => {
+        setBusy('reset')
+        try {
+          const next = await api('/reset', { method: 'POST', body: '{}' })
+          adopt(next)
+          flash('ok', t('save.ok'))
+        } catch (e) {
+          flash('err', t('save.fail').replace('{message}', String(e?.message ?? e)))
+        } finally { setBusy('') }
+      }, [adopt, flash, t])
+
+      const rescan = useCallback(async () => {
+        setBusy('rescan')
+        try {
+          const next = await api('/rescan', { method: 'POST', body: '{}' })
+          setData(next)
+        } catch (e) {
+          flash('err', String(e?.message ?? e))
+        } finally { setBusy('') }
+      }, [flash])
+
+      /** 引导卡片上的「知道了」：把 draft 与 seen 一起落盘，不丢用户的未保存改动。 */
+      const finishGuide = useCallback(async () => {
+        setBusy('guide')
+        try {
+          const next = await api('/config', {
+            method: 'POST',
+            body: JSON.stringify({ patch: { ...(draft ?? {}), onboarding: { seen: true } } }),
+          })
+          adopt(next)
+          flash(next.writeError ? 'warn' : 'ok', next.writeError ? t('save.warn') : t('save.ok'))
+        } catch (e) {
+          flash('err', t('save.fail').replace('{message}', String(e?.message ?? e)))
+        } finally { setBusy('') }
+      }, [adopt, draft, flash, t])
+
+      const patch = useCallback(part => { setDraft(current => ({ ...current, ...part })) }, [])
+      const patchNested = useCallback((key, id, value) => {
+        setDraft(current => ({ ...current, [key]: { ...(current[key] ?? {}), [id]: value } }))
+      }, [])
+
+      const dirty = useMemo(() => (data && draft ? !same(data.config, draft) : false), [data, draft])
+
+      if (error !== '') {
+        return h('div', { className: 'ad_root' },
+          h('div', { className: 'ad_callout' },
+            h('span', null, `${t('loadFailed')}：${error}`),
+            h('button', { type: 'button', className: 'ad_btn', onClick: () => { void load() } }, t('retry'))))
+      }
+      if (!data || !draft) {
+        return h('div', { className: 'ad_root' }, h('p', { className: 'ad_sub' }, t('loading')))
+      }
+
+      const health = data.health ?? { services: {}, roster: { sources: {} }, peers: [], llm: { providers: [] } }
+      const rows = data.roster?.rows ?? []
+      const knownKeys = new Set(rows.map(row => row.key))
+      // 手填但还没落盘/还不在名册里的条目：先按行渲染出来，用户看得见自己刚加的东西。
+      const extras = Object.entries(draft.helpers ?? {})
+        .filter(([key, value]) => value?.enabled === true && !knownKeys.has(key))
+        .map(([key]) => {
+          const parts = splitKey(key)
+          return { key, provider: parts.provider, model: parts.model, name: parts.model, state: 'unknown', ttftMs: 0, verified: false, source: 'manual' }
+        })
+      const tableRows = [...rows, ...extras]
+      const maxTtft = Math.max(1, ...tableRows.map(row => (row.state === 'available' ? row.ttftMs : 0)))
+      const off = draft.enabled !== false && draft.mode !== 'off'
+      const armedKeys = tableRows.filter(row => draft.helpers?.[row.key]?.enabled === true).map(row => row.key)
+      const peers = Array.isArray(health.peers) ? health.peers : []
+
+      const header = h('div', { className: 'ad_hero' },
+        h('h2', { className: 'ad_h1' }, t('title')),
+        h('p', { className: 'ad_tagline' }, t('subtitle')),
+        h('div', { className: 'ad_pills' },
+          h('span', { className: 'ad_pill' },
+            h('i', { className: `ad_dot ${off ? 'ok' : 'off'}` }),
+            `${t('enabledPill')}: `, h('b', null, off ? `${t('on')} · ${t(`mode.${draft.mode}`)}` : t('off'))),
+          h('span', { className: 'ad_pill' }, `${t('statHelpers')} `, h('b', null, `${data.stats.available}/${data.stats.rosterTotal}`)),
+          h('span', { className: 'ad_pill' }, `${t('statArmed')} `, h('b', null, String(armedKeys.length))),
+          h('span', { className: 'ad_pill' }, `${t('statChannels')} `, h('b', null, String(data.stats.channels))),
+          h('span', { className: 'ad_pill' }, `${t('statConcurrency')} `, h('b', null, String(draft.maxHelpers)))))
+
+      // 0) 首次引导（onboarding）——看过一次就不再出现
+      const guide = health.onboardingSeen === true ? null : h('div', { className: 'ad_card ad_guide' },
+        h('div', { className: 'ad_row' },
+          h('h3', { className: 'ad_h1', style: { fontSize: '14px' } }, t('guideTitle')),
+          h('span', { className: 'ad_grow' })),
+        h('p', { className: 'ad_sub', style: { margin: 0 } }, t('guideLead')),
+        h('div', { className: 'ad_steps' },
+          ['guideS1', 'guideS2', 'guideS3', 'guideS4'].map((key, index) => h('div', { key, className: 'ad_step' },
+            h('span', { className: 'ad_stepnum' }, String(index + 1)),
+            h('span', { className: 'ad_sub', style: { flex: 1 } }, t(key))))),
+        h('div', { className: 'ad_actions' },
+          h('button', { type: 'button', className: 'ad_btn primary', disabled: busy === 'guide', onClick: () => { void finishGuide() } }, t('guideDone')),
+          h('button', { type: 'button', className: 'ad_btn', disabled: busy === 'rescan', onClick: () => { void rescan() } },
+            busy === 'rescan' ? t('rescanning') : t('guideRescan'))))
+
+      // 1) 总开关 + 模式
+      const master = h('div', { className: 'ad_sec' },
+        h('div', { className: 'ad_row' },
+          h(Toggle, { checked: draft.enabled !== false, onChange: value => patch({ enabled: value, ...(value && draft.mode === 'off' ? { mode: 'ask' } : {}) }), label: t('master') }),
+          h('span', { className: 'ad_grow ad_sub' }, t('masterHint'))),
+        h('div', { className: 'ad_row' },
+          h('span', { className: 'ad_label' }, t('mode')),
+          h('div', { className: 'ad_seg' }, ['off', 'ask', 'auto'].map(mode => h('button', {
+            key: mode,
+            type: 'button',
+            'aria-pressed': (draft.enabled === false ? 'off' : draft.mode) === mode ? 'true' : 'false',
+            onClick: () => patch(mode === 'off' ? { mode } : { mode, enabled: true }),
+          }, t(`mode.${mode}`)))),
+          h('span', { className: 'ad_grow ad_sub' }, t(`modeHint.${draft.enabled === false ? 'off' : draft.mode}`))))
+
+      // 2) 通道
+      const channels = h('div', { className: 'ad_sec' },
+        h('div', { className: 'ad_sechead' }, h('h3', null, t('channels')), h('span', { className: 'ad_sechint' }, t('channelsHint'))),
+        h('div', { className: `ad_card ${off ? '' : 'ad_off'}` },
+          h('div', { className: 'ad_list' }, data.channels.map(channel => h('div', { key: channel.id, className: 'ad_chan' },
+            h(Toggle, {
+              checked: draft.channels?.[channel.id] === true,
+              disabled: !off,
+              onChange: value => patchNested('channels', channel.id, value),
+            }),
+            h('div', { className: 'ad_rowmain ad_grow' },
+              h('span', { className: 'ad_label' }, channel.label),
+              h('span', { className: 'ad_sub' }, channel.hint)))))))
+
+      // 3) 名册 + 手填
+      const roster = h('div', { className: 'ad_sec' },
+        h('div', { className: 'ad_sechead' },
+          h('h3', null, t('roster')),
+          h('span', { className: 'ad_sechint' },
+            peers.length > 0 ? `${t('adaptFound')}: ${peers.map(peer => `${peer.name}(${peer.models})`).join(' · ')}` : '',
+            health.roster?.scannedAt ? ` · ${t('adaptScanned')} ${clock(health.roster.scannedAt)}` : '')),
+        peers.length === 0 ? h('div', { className: 'ad_callout' }, h('span', null, t('adaptNoPeers'))) : null,
+        peers.some(peer => peer.enabled === false) ? h('div', { className: 'ad_callout' },
+          h('span', null, `${peers.filter(peer => peer.enabled === false).map(peer => peer.name).join(' / ')} — ${t('srcSeedHint')}`)) : null,
+        h('div', { className: `ad_card ${off ? '' : 'ad_off'}` },
+          h('div', { className: 'ad_actions' },
+            h('button', { type: 'button', className: 'ad_btn', disabled: busy === 'rescan', onClick: () => { void rescan() } },
+              busy === 'rescan' ? t('rescanning') : t('rescan')),
+            h('span', { className: 'ad_sub ad_grow' }, t('rosterHint'))),
+          h('table', { className: 'ad_table' },
+            h('thead', null, h('tr', null,
+              h('th', null, ''),
+              h('th', null, ''),
+              h('th', null, t('colHelper')),
+              h('th', null, t('colSource')),
+              h('th', null, t('colState')),
+              h('th', null, t('ttft')),
+              h('th', null, ''))),
+            h('tbody', null, tableRows.map(row => {
+              const armed = draft.helpers?.[row.key]?.enabled === true
+              const isPrimary = draft.primary === row.key
+              const pct = row.state === 'available' && row.ttftMs > 0 ? Math.max(6, Math.round((row.ttftMs / maxTtft) * 100)) : 0
+              const slow = row.state === 'available' && pct >= 60
+              const blocked = row.state === 'unavailable' || row.state === 'region-blocked'
+              return h('tr', { key: row.key, className: armed ? '' : 'ad_disarmed' },
+                h('td', { style: { width: 20 } }, h('input', {
+                  type: 'checkbox',
+                  className: 'ad_check',
+                  checked: armed,
+                  disabled: !off,
+                  onChange: event => {
+                    patchNested('helpers', row.key, { enabled: event.target.checked })
+                    if (event.target.checked && (draft.primary === '' || draft.primary === undefined)) patch({ primary: row.key })
+                  },
+                })),
+                h('td', { style: { width: 96 } }, h('button', {
+                  type: 'button',
+                  className: 'ad_star',
+                  'aria-pressed': isPrimary ? 'true' : 'false',
+                  title: armed ? t('setPrimary') : t('rosterHint'),
+                  disabled: !off || !armed || blocked,
+                  onClick: () => patch({ primary: row.key }),
+                }, isPrimary ? `★ ${t('primary')}` : t('setPrimary'))),
+                h('td', null,
+                  h('span', { className: 'ad_label' }, row.name),
+                  h('code', { className: 'ad_id' }, row.key)),
+                h('td', { style: { width: 112 } }, h(SourceTag, { row, t })),
+                h('td', { style: { width: 96 } }, h('span', { className: `ad_badge ${row.state}` }, t({
+                  available: 'stateAvailable',
+                  'region-blocked': 'stateRegion',
+                  unavailable: 'stateUnavailable',
+                  throttled: 'stateThrottled',
+                }[row.state] ?? 'stateUnknown'))),
+                h('td', { style: { width: 150 } },
+                  h('div', { className: 'ad_lat' },
+                    h('span', { className: 'ad_num' }, seconds(row.ttftMs)),
+                    pct > 0 ? h('span', { className: 'ad_bar' }, h('i', { className: slow ? 'slow' : '', style: { width: `${pct}%` } })) : null)),
+                h('td', { style: { width: 60 } }, h('button', {
+                  type: 'button',
+                  className: 'ad_x',
+                  title: t('remove'),
+                  disabled: !off,
+                  onClick: () => {
+                    setDraft(current => {
+                      const helpers = { ...(current.helpers ?? {}) }
+                      delete helpers[row.key]
+                      return { ...current, helpers }
+                    })
+                  },
+                }, '×')))}))),
+          h('div', { className: 'ad_sechead', style: { borderBottom: 0, paddingBottom: 0 } },
+            h('h3', null, t('addTitle'))),
+          h('div', { className: 'ad_grid' },
+            h('label', { className: 'ad_field' },
+              h('span', null, t('addProvider')),
+              h('input', {
+                className: 'ad_input', list: 'ad_providers', value: adding.provider, placeholder: 'our-free-model',
+                onChange: event => setAdding(current => ({ ...current, provider: event.target.value.trim() })),
+              })),
+            h('label', { className: 'ad_field' },
+              h('span', null, t('addModel')),
+              h('input', {
+                className: 'ad_input', value: adding.model, placeholder: 'nemotron-3-ultra-free',
+                onChange: event => setAdding(current => ({ ...current, model: event.target.value.trim() })),
+              })),
+            h('button', {
+              type: 'button', className: 'ad_btn', disabled: !off,
+              onClick: () => {
+                if (adding.provider === '' || adding.model === '') { flash('err', t('addBad')); return }
+                const key = `${adding.provider}:${adding.model}`
+                if (draft.helpers?.[key] !== undefined || knownKeys.has(key)) { flash('warn', t('addDup')); return }
+                patchNested('helpers', key, { enabled: true })
+                setAdding({ provider: '', model: '' })
+              },
+            }, t('addBtn'))),
+          h('datalist', { id: 'ad_providers' }, (data.providers ?? []).map(provider => h('option', { key: provider.id, value: provider.id }))),
+          h('span', { className: 'ad_sub' }, t('addHint'))))
+
+      // 4) 规模 + 备注
+      const scale = h('div', { className: 'ad_sec' },
+        h('div', { className: 'ad_sechead' }, h('h3', null, t('scale'))),
+        h('div', { className: `ad_card ${off ? '' : 'ad_off'}` },
+          h('div', { className: 'ad_grid' },
+            h('label', { className: 'ad_field' },
+              h('span', null, t('concurrency')),
+              h('input', {
+                type: 'number', min: 1, max: 8, className: 'ad_input', value: draft.maxHelpers,
+                onChange: event => patch({ maxHelpers: Number(event.target.value) }),
+              })),
+            h('label', { className: 'ad_field' },
+              h('span', null, t('minSteps')),
+              h('input', {
+                type: 'number', min: 1, max: 20, className: 'ad_input', value: draft.minSteps,
+                onChange: event => patch({ minSteps: Number(event.target.value) }),
+              }))),
+          h('div', { className: 'ad_row' },
+            h(Toggle, { checked: draft.longTaskOnly === true, disabled: !off, onChange: value => patch({ longTaskOnly: value }), label: t('longTaskOnly') }),
+            h('span', { className: 'ad_grow ad_sub' }, t('longTaskOnlyHint'))),
+          h('label', { className: 'ad_field' },
+            h('span', null, t('notes')),
+            h('textarea', {
+              className: 'ad_area', value: draft.notes ?? '', placeholder: t('notesPlaceholder'),
+              onChange: event => patch({ notes: event.target.value }),
+            }))))
+
+      // 5) 动作 + 预览
+      const actions = h('div', { className: 'ad_actions' },
+        h('button', { type: 'button', className: 'ad_btn primary', disabled: busy === 'save', onClick: () => { void save() } },
+          busy === 'save' ? t('saving') : t('save')),
+        dirty ? h('span', { className: 'ad_dirty' }, t('dirty')) : null,
+        h('button', { type: 'button', className: 'ad_btn', disabled: busy === 'reset', onClick: () => { void reset() } }, t('reset')),
+        status.text !== '' ? h('span', { className: `ad_status ${status.kind}` }, status.text) : null)
+
+      const preview = h('details', { className: 'ad_details' },
+        h('summary', null, t('preview')),
+        h('p', { className: 'ad_sub' }, t('previewHint'), dirty ? ` ${t('unsaved')}` : ''),
+        h('pre', { className: 'ad_pre' }, data.preview))
+
+      // 6) 宿主适配自检：解释「哪个功能为什么在 / 不在」
+      const svc = health.services ?? {}
+      const svcRow = (label, ok) => h('span', { key: label, className: 'ad_pill' },
+        h('i', { className: `ad_dot ${ok ? 'ok' : 'off'}` }), `${label}: `, h('b', null, ok ? t('svcOk') : t('svcNo')))
+      const adapt = h('details', { className: 'ad_details' },
+        h('summary', null, t('adapt')),
+        h('p', { className: 'ad_sub' }, t('adaptHint')),
+        h('div', { className: 'ad_kv' },
+          svcRow(t('svcWebServer'), svc.webServer === true),
+          svcRow(t('svcPrompt'), svc.systemPrompt === true),
+          svcRow(t('svcLlm'), svc.llm === true),
+          h('span', { className: 'ad_pill' }, `${t('adaptWritable')}: `, h('b', null, health.writable === true ? t('adaptYes') : t('adaptNo'))),
+          h('span', { className: 'ad_pill' }, `${t('adaptHome')} `, h('b', null, health.home ?? ''))),
+        peers.length > 0
+          ? h('div', { className: 'ad_kv' }, peers.map(peer => h('span', { key: peer.name, className: 'ad_pill' },
+            h('i', { className: `ad_dot ${peer.enabled === false ? 'off' : 'ok'}` }),
+            `${peer.name}: `, h('b', null, `${peer.models} ${t('adaptModels')}`),
+            peer.probedAt ? ` · ${clock(peer.probedAt)}` : ` · ${t('never')}`,
+            peer.egress ? ` · ${peer.egress}` : '')))
+          : h('p', { className: 'ad_sub' }, t('adaptNoPeers')),
+        health.llm?.error ? h('p', { className: 'ad_callout' }, h('span', null, t('adaptLlmError').replace('{message}', health.llm.error))) : null,
+        svc.llm !== true ? h('p', { className: 'ad_sub' }, t('adaptLlmHint')) : null)
+
+      const foot = h('p', { className: 'ad_foot' },
+        t('footer').replace('{path}', data.meta?.configPath ?? health.configPath ?? ''),
+        data.meta?.pluginVersion ? ` · ${t('version')} ${data.meta.pluginVersion}${data.meta.configVersion ? ` (config v${data.meta.configVersion})` : ''}` : '')
+
+      return h('div', { className: 'ad_root' }, header, guide, master, channels, roster, scale, actions, preview, adapt, foot)
+    }
+
+    // ── 注册 ─────────────────────────────────────────────────────────────────
+    function apply(ctx) {
+      const t = ctx.locale.bind(NS)
+      ctx.effect(() => ctx.locale.register(NS, { zh: DICT.zh, en: DICT.en }), 'agent-dispatch: dictionaries')
+
+      ctx.effect(() => {
+        const style = document.createElement('style')
+        style.setAttribute('data-plugin', 'dsh-agent-dispatch')
+        style.textContent = CSS
+        document.head.appendChild(style)
+        return () => style.remove()
+      }, 'agent-dispatch: styles')
+
+      ctx.slots.inject('settings.section', () => ctx.slots.register({
+        name: 'settings.section',
+        id: 'agent-dispatch',
+        order: 40,
+        label: () => t('nav'),
+        locale: NS,
+      }, props => h(Panel, { ...props, t })))
+
+      // 首次使用引导卡片：宿主提供 settings.onboarding 插槽时才出现（缺席只少一张卡）。
+      ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
+        name: 'settings.onboarding',
+        id: 'agent-dispatch',
+        order: -40,
+        label: () => t('nav'),
+        locale: NS,
+      }, props => h(Panel, { ...props, t })))
+    }
+
+    exports.apply = apply
+    exports.inject = inject
+    exports.name = 'agent-dispatch'
+    return module.exports
+  },
+})

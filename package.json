@@ -1,0 +1,69 @@
+{
+  "name": "dsh-agent-dispatch",
+  "version": "0.2.0",
+  "description": "帮手调度台 — 一个可见的面板：决定主 agent 是否要其他 agent 帮忙、准哪几个帮手（免费模型 / 子代理 / 专家 / 团队）上场，并把这条分工策略实时注入系统提示词。",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "scripts",
+    "docs",
+    "README.md",
+    "README.en.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "node --check index.js && node --check client.js",
+    "i18n": "node scripts/check-i18n.mjs",
+    "test": "node scripts/selftest.mjs",
+    "smoke": "node scripts/smoke-host.mjs",
+    "verify": "npm run check && npm run i18n && npm run test"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "agent",
+    "agent-dispatch",
+    "delegation",
+    "subagent",
+    "free-model",
+    "token-saving",
+    "settings-panel"
+  ],
+  "author": {
+    "name": "Napstablooky",
+    "email": "qq1679081267@gmail.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Napstablooky/dsh-agent-dispatch.git"
+  },
+  "homepage": "https://github.com/Napstablooky/dsh-agent-dispatch#readme",
+  "bugs": {
+    "url": "https://github.com/Napstablooky/dsh-agent-dispatch/issues"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  }
+}
