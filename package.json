@@ -1,7 +1,7 @@
 {
   "name": "dsh-agent-dispatch",
-  "version": "0.2.0",
-  "description": "帮手调度台 — 一个可见的面板：决定主 agent 是否要其他 agent 帮忙、准哪几个帮手（免费模型 / 子代理 / 专家 / 团队）上场，并把这条分工策略实时注入系统提示词。",
+  "version": "0.2.1",
+  "description": "帮手调度台 — 一块可见的设置面板：决定主 agent 要不要别的 agent 帮忙、准哪几个帮手（免费模型 / 子代理 / 专家 / 团队）上场，并把这条分工策略注入 systemPrompt 段，保存即生效。",
   "type": "module",
   "main": "./index.js",
   "exports": {
@@ -18,16 +18,18 @@
     "docs",
     "README.md",
     "README.en.md",
+    "CONTRIBUTING.md",
     "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
     "check": "node --check index.js && node --check client.js",
     "i18n": "node scripts/check-i18n.mjs",
+    "links": "node scripts/check-links.mjs",
     "test": "node scripts/selftest.mjs",
     "smoke": "node scripts/smoke-host.mjs",
     "smoke:client": "node scripts/smoke-client.mjs",
-    "verify": "npm run check && npm run i18n && npm run test && npm run smoke && npm run smoke:client"
+    "verify": "npm run check && npm run i18n && npm run links && npm run test && npm run smoke && npm run smoke:client"
   },
   "keywords": [
     "dsh",

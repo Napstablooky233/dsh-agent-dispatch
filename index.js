@@ -397,7 +397,7 @@ function renderPolicy(config, roster) {
   return lines.join('\n')
 }
 
-/** primary 必须落在已勾选的名单里；否则退回第一个可用的。 */
+/** primary 必须落在已勾选的名册里；否则退回第一个可用的。 */
 function pickPrimary(config, armed, usable) {
   if (config.primary && armed.some(row => row.key === config.primary)) return config.primary
   return usable[0]?.key ?? armed[0]?.key ?? ''
@@ -676,7 +676,7 @@ function sanitizeConfig(patch, current, opts = {}) {
   if (typeof patch.notes === 'string') next.notes = patch.notes.slice(0, 2000)
   next.version = CONFIG_VERSION
 
-  // 勾选与名单对齐：primary 指向一个没勾选的模型时，注入文本会退回实际勾选的第一个。
+  // 勾选与名册对齐：primary 指向一个没勾选的模型时，注入文本会退回实际勾选的第一个。
   if (next.helpers[next.primary]?.enabled !== true && Object.values(next.helpers).some(item => item?.enabled === true)) {
     next.primary = Object.entries(next.helpers).find(([, item]) => item?.enabled === true)?.[0] ?? next.primary
   }

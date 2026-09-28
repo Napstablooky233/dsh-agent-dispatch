@@ -1,87 +1,91 @@
+<div align="center">
+<a href="README.md"><img src="docs/assets/lang/zh-off.svg" alt="Chinese (Simplified)" height="30"></a>&nbsp;&nbsp;<a href="README.en.md"><img src="docs/assets/lang/en-on.svg" alt="English" height="30"></a>
+</div>
+
 # dsh-agent-dispatch · Agent Dispatch
 
-A DSH plugin: a settings panel that decides whether the main agent should delegate to other agents, which helpers may take the work, and turns that policy into a `systemPrompt` section that re-evaluates on every step.
+> One settings pane: decide whether the main agent gets help, which helpers play — and it **actually works**. Policy is injected as a `systemPrompt` section; save and it takes effect.
 
-- **Visible**: one settings section showing status, channels, helper roster with measured TTFT.
-- **Actionable**: master switch / three-mode selector / channel toggles / helper toggles / concurrency limit / extra notes — save applies.
-- **Live**: the policy text is a function re-evaluated each step; off mode injects an explicit "no delegation this round" instruction.
+- **Visible**: one settings section showing status, channels, and helper roster (with measured TTFT).
+- **Actionable**: master switch / three-mode selector / channel checkboxes / helper checkboxes / concurrency limit / extra notes — change and save.
+- **Actually effective**: policy text is a function, re-evaluated every step; when disabled it injects an explicit "no dispatch this turn" instruction.
 
-## What it solves, why it saves tokens
+## What it solves · Why it saves tokens
 
-The main agent (paid lane) re-sends the full context at every step and bills by `cacheMiss`. Helpers have independent free contexts with zero input/output cost. So the savings don't come from saying less — they come from **moving self-contained work out**. This plugin manages *what moves, to whom, and how many*.
+The main agent resends the full context (system prompt + history) every step, billed by `cacheMiss` — the biggest line on the token bill. Independent helpers each have their own context, and the free lane has zero cost for input and output. So the key to saving money isn't "talk less", it's **moving self-contained work out**. This plugin manages "what to move, to whom, how many".
 
-Division rule (hard-coded in the injected text): simple, mechanical, self-contained work that doesn't depend on the main session context (bulk retrieval, per-item audit, reformatting, lists, translation, formatting, drafts) goes to free helpers. The hardest, most judgment-critical parts (architecture and key design, cross-module reasoning, correctness and safety judgments, dispute arbitration, final delivery) stay with the main agent.
+Division of labor (hard-coded in injected text): simple, mechanical, self-contained work that does not depend on main-session context (bulk retrieval, item-by-item audit, copy-edit-reorder, list making, translation, formatting, first drafts) goes to free-lane helpers; the hardest, most judgment-heavy, consequence-sensitive parts (architecture and key design, cross-module reasoning, correctness and safety judgments, dispute resolution, final delivery) stay with the main agent.
 
 ## Install
 
-Plugin directory: `D:\dsh-agent-dispatch` (this repo). Two routes:
+Plugin directory: `D:\dsh-agent-dispatch` (this repo). Two ways:
 
-### A. Auto-edit the profile manifest (recommended)
+### A. Auto-edit profile manifest (recommended)
 
 ```powershell
 node scripts/install-into-profile.mjs            # dry run, prints the two lines to change
-node scripts/install-into-profile.mjs --apply    # actually write (auto-backups package.json)
+node scripts/install-into-profile.mjs --apply    # actually edit (auto-backup package.json)
 node scripts/install-into-profile.mjs --revert   # restore from backup
 ```
 
-The script touches one file: `<DSH_HOME>/profiles/<profile>/package.json` — the `link:` dependency in `dependencies` and the package name in `dsh.profile.bundles`. After that, run `pnpm install` in the profile directory (to materialize the `link:` into a node_modules junction) and **restart dsh** (`patchReload: "live"` covers hot-patch reload but not new bundles; restarting ends the current GUI session).
+The script touches only one file: `<DSH_HOME>/profiles/<profile>/package.json` in two places — the `link:` dependency in `dependencies`, and the package name in `dsh.profile.bundles`. After editing, run `pnpm install` in that profile directory (to turn the `link:` into a junction in `node_modules`) and **restart dsh** (`patchReload: "live"` handles hot reload, but not a new bundle; restart ends the current GUI session).
 
-> Note: `pnpm install` aligns node_modules to the declared versions in `package.json`. If a plugin was updated by the plugin manager to a higher version than the manifest declares, this step rolls it back. To keep a newer version: `pnpm add <pkg>@<version>` before restarting.
+> Note: `pnpm install` aligns `node_modules` to the versions declared in `package.json` — if a plugin was previously updated to a higher version by the plugin manager, this step will downgrade it to the declared value. To keep the newer version: `pnpm add <pkg>@<version>` then restart.
 
 ### B. Manual
 
-Equivalent to editing `C:\Users\qq167\.dsh\profiles\web\package.json` in two places:
+Equivalent to manually editing `C:\Users\qq167\.dsh\profiles\web\package.json` in two places:
 
-1. In `dependencies`, add:
+1. In `dependencies` add:
    ```json
    "dsh-agent-dispatch": "link:D:/dsh-agent-dispatch"
    ```
-2. In the `dsh.profile.bundles` array, add `"dsh-agent-dispatch"`.
+2. In the `dsh.profile.bundles` array add the package name: `"dsh-agent-dispatch"`
 
 Then `pnpm install` + restart dsh.
 
-After install: **Settings → Agent Dispatch**.
+After install: Settings → **Agent Dispatch**.
 
 ## Panel overview
 
-Six blocks, top to bottom:
+Six sections, top to bottom:
 
-| Block | Content |
+| Section | Content |
 | --- | --- |
-| Master switch + three-mode | On/Off; modes: Off / Ask me / Auto |
-| Helper channels | workflow fan-out / subagent single / Agency experts / Agent Teams; unchecked channels get explicit prohibition |
-| Helper roster | Three merged sources (host-registered / lane-probed / manual + built-in), each row tagged; ★ = default primary |
-| Dispatch budget | Max parallel helpers (1–8), minimum steps to deserve a helper, whether quick jobs are banned |
-| Extra notes | Injected verbatim into the policy text |
-| Preview | The actual policy text sent to the agent — not a mockup |
+| Master switch & three-mode selector | On / Off; three modes: Off / Ask me / Auto |
+| Helper channels | workflow fan-out / single subagent / Agency experts / Agent Teams; unchecked channels go to the deny list |
+| Helper roster | Three merged sources (host-registered / lane probe / manual + built-in reference), each row labeled with source; ★ marks the default primary |
+| Dispatch scale | Max simultaneous helpers (1–8), step threshold for dispatch, whether short tasks are blocked from dispatch |
+| Extra notes | Written verbatim into injected text |
+| View injected text | Expand to see the **actual** policy sent to the agent, not a mockup |
 
-Plus a **first-run guide** (four steps, shown once) and a **host adaptation** check (explains why a feature is present or absent).
+Top also has **first-run guide** (four steps, shown once) and **host adaptation check** (explains why each feature is present or absent).
 
 ## Configuration keys
 
-Persisted at `$DSH_HOME/agent-dispatch/config.json` (default `C:\Users\qq167\.dsh\agent-dispatch\config.json`), atomic write (tmp + rename). Panel re-reads on every open; hand-editing is equivalent to panel changes.
+Persisted to `$DSH_HOME/agent-dispatch/config.json` (default `C:\Users\qq167\.dsh\agent-dispatch\config.json`), atomic write (tmp + rename). Panel re-reads on every open; hand-editing this file is equivalent to panel changes.
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `version` | number | 2 | Config schema version; v1 bare model keys get a provider prefix migrated on load |
-| `enabled` | boolean | `true` | Master switch; off injects an explicit "no delegation" instruction |
+| `version` | number | 2 | Config structure version; v1 bare model keys get provider prefix auto-added on load |
+| `enabled` | boolean | `true` | Master switch; off = injects explicit "no dispatch" instruction |
 | `mode` | `'off' \| 'ask' \| 'auto'` | `'ask'` | Dispatch mode |
-| `peer` | string | `'our-free-model'` | Default provider name for the roster seed; only determines whose name the seed rows hang under, does not require the model to exist on this machine |
-| `discover.llm` | boolean | `true` | Whether to query the host llm service for provider/model enumeration |
-| `discover.siblings` | boolean | `true` | Whether to scan sibling plugin state files under `$DSH_HOME` |
+| `peer` | string | `'our-free-model'` | Roster default provider name (only decides which provider the reference roster sits under; does not require this machine to actually have it) |
+| `discover.llm` | boolean | `true` | Whether to ask host LLM service to enumerate provider/model |
+| `discover.siblings` | boolean | `true` | Whether to scan sibling plugins' status files under `$DSH_HOME` |
 | `channels.workflow` | boolean | `true` | Allow workflow fan-out |
-| `channels.subagent` | boolean | `true` | Allow subagent single dispatch |
+| `channels.subagent` | boolean | `true` | Allow single subagent dispatch |
 | `channels.experts` | boolean | `false` | Allow Agency experts |
 | `channels.teams` | boolean | `false` | Allow Agent Teams |
-| `helpers.{provider}:{model}` | object | see below | Key is `provider:model`; value `{ enabled: boolean, label?: string }` |
-| `primary` | string | `'our-free-model:nemotron-3-ultra-free'` | Default primary helper; must be an enabled helper or it falls back to the first enabled one |
-| `maxHelpers` | number | 4 | Max helpers dispatched at once (clamped to 1–8) |
-| `minSteps` | number | 3 | Minimum steps before a job deserves a helper (clamped to 1–20) |
-| `longTaskOnly` | boolean | `true` | When on, one-liner tasks must stay with the main agent |
-| `onboarding.seen` | boolean | `false` | Set to `true` after the first-run guide is dismissed |
-| `notes` | string | `''` | Extra instructions, injected verbatim (truncated to 2000 chars) |
+| `helpers.{provider}:{model}` | object | see below | Key is `provider:model`, value `{ enabled: boolean, label?: string }` |
+| `primary` | string | `'our-free-model:nemotron-3-ultra-free'` | Default primary helper; must be an enabled model, otherwise falls back to first enabled |
+| `maxHelpers` | number | 4 | Max simultaneous helpers (clamped to 1–8) |
+| `minSteps` | number | 3 | Task must exceed this many steps to be worth dispatching (clamped to 1–20) |
+| `longTaskOnly` | boolean | `true` | When on, tasks answerable in one sentence are not dispatched |
+| `onboarding.seen` | boolean | `false` | Set `true` after first-run guide viewed |
+| `notes` | string | `''` | Extra notes, written verbatim into injected text (truncated to 2000 characters) |
 
-Factory-default `helpers` enables six `our-free-model` models verified available on this host: `nemotron-3-ultra-free`, `nemotron-3.5-lightning-free`, `space-bunny-free`, `longcat-2.5-preview-free`, `ling-3.0-flash-fin-free`, `mimo-v2.5-free`. (v1 configs without a `provider:` prefix get `our-free-model:` prepended on load.)
+Factory default `helpers` enables six verified-available `our-free-model` models: `nemotron-3-ultra-free`, `nemotron-3.5-lightning-free`, `space-bunny-free`, `longcat-2.5-preview-free`, `ling-3.0-flash-fin-free`, `mimo-v2.5-free` (v1 config keys without provider prefix auto-prefixed with `our-free-model:`).
 
 ## Channels and roster
 
@@ -89,65 +93,78 @@ Factory-default `helpers` enables six `our-free-model` models verified available
 
 | id | Label | Description |
 | --- | --- | --- |
-| `workflow` | workflow fan-out | Run multiple independent sub-tasks in one script, each with its own provider/model |
-| `subagent` | subagent single | Drop a self-contained task into another context; only the result comes back |
-| `experts` | Agency experts | Summon domain-specific expert personas (must be enabled in settings) |
-| `teams` | Agent Teams | Multi-member shared task board (only created when the user explicitly asks) |
+| `workflow` | workflow fan-out | Run multiple independent sub-tasks side by side in one script, each can specify its own provider/model |
+| `subagent` | single subagent | Delegate one whole independent task to another context, only get the result back |
+| `experts` | Agency experts | Summon expert personas by domain (requires enabling in settings) |
+| `teams` | Agent Teams | Multi-member shared task board collaboration (only created when user explicitly requests) |
 
-### Roster — three sources
+### Roster three sources
 
-Every row carries a source tag displayed as "lane probe" / "host-registered" / "manual" / "built-in":
+Every row has a source tag; panel displays as "lane probe / host-registered / manual / built-in":
 
-1. **Host llm service enumeration** (source `llm`, tag "host-registered") — the only source proving a provider/model is *currently callable*.
-2. **Sibling plugin state files** (source `peer`, tag "lane probe") — scans `$DSH_HOME/<any-plugin-dir>/catalog.json` + `availability.json`, no hardcoded names, delivers measured TTFT.
-3. **Manual entries** (source `manual`, tag "manual") — user can add any `provider:model`, even a paid lane.
-4. **Built-in seed roster** (source `seed`, tag "built-in") — 11 `our-free-model` model snapshots, guarantees the panel isn't empty on first open. **Not a source of truth** — just shows what's typical.
+1. **Host LLM service actual enumeration** (source `llm`, tag "host-registered") — the only source that can prove "this provider/model can actually be called right now".
+2. **Sibling plugin status files** (source `peer`, tag "lane probe") — scans `$DSH_HOME/<any plugin dir>/catalog.json` + `availability.json`, no hardcoded names, gets measured TTFT.
+3. **Panel manual entry** (source `manual`, tag "manual") — user can enter any `provider:model`, even other paid lanes.
+4. **Built-in reference roster** (source `seed`, tag "built-in") — 11-row `our-free-model` model snapshot, ensures panel is not empty on first open. **Not a factual source**, only shows "what it looks like".
 
-Merge priority: `llm enumeration → verified=true`; `sibling availability → state/ttftMs`; `seed → only fills in what it looks like`, never overrides the above.
+Merge priority: `llm enumeration → verified=true`; `sibling plugin availability → state / ttftMs`; `built-in reference → only fills appearance`, does not override the above two judgments.
 
 ## HTTP API
 
-All under the same-origin route `/api/agent-dispatch/*`, running in the same process as the host body. **Loopback only; non-loopback gets 403.**
+All routes under same-origin `/api/agent-dispatch/*`, co-located with host half in the same process. **Only serves local browser; non-loopback returns 403.**
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/agent-dispatch/summary` | Current config, roster, policy preview, stats, host adaptation |
-| GET | `/api/agent-dispatch/health` | Service connection status, config path, source counts |
-| POST | `/api/agent-dispatch/config` | Body `{ patch }` merges config and persists; returns full summary |
-| POST | `/api/agent-dispatch/rescan` | Re-enumerate llm and rebuild roster |
-| POST | `/api/agent-dispatch/reset` | Restore factory defaults and persist |
+| GET | `/api/agent-dispatch/summary` | Returns current config, roster, preview policy, stats, host adaptation status |
+| GET | `/api/agent-dispatch/health` | Returns service connectivity status, config path, roster source counts |
+| POST | `/api/agent-dispatch/config` | Body `{ patch }` merges config and persists, returns full summary |
+| POST | `/api/agent-dispatch/rescan` | Re-enumerates LLM and rebuilds roster |
+| POST | `/api/agent-dispatch/reset` | Restores factory default and persists |
 
 ## Compatibility and graceful degradation
 
-`inject = []` with nested fibers lazily acquiring `webServer` / `systemPrompt` / `llm`. **Any service absence removes only that feature — the panel stays fully usable**:
+`inject = []` + nested fiber opportunistic acquisition of `webServer` / `systemPrompt` / `llm` three services. **Any one missing only loses the corresponding feature; plugin remains usable**:
 
-- No `webServer`: panel API unavailable (the browser half can't read/write config), but the `systemPrompt` section still injects.
-- No `systemPrompt`: policy not injected (panel changes don't take effect), but API and roster work.
-- No `llm`: roster falls back to lane probes + seed + manual; a manual provider:model entry still dispatches.
-- No services at all: panel works (in-memory config + seed roster).
+- No `webServer`: panel API unavailable (browser half cannot read/write config), but `systemPrompt` section still injects.
+- No `systemPrompt`: policy not injected (panel changes don't take effect), but API and roster work normally.
+- No `llm`: roster only has lane probe + built-in reference + manual; manual entry of one `provider:model` still works.
+- No services at all: panel still usable (pure in-memory config + built-in reference roster).
 
-Write failure is non-fatal: config changes memory and takes effect immediately; the panel warns on disk failure.
+Write failure is not fatal: config updates memory first and takes effect immediately; panel shows "write failed, will revert on restart".
 
 ## Uninstall
 
 `node scripts/install-into-profile.mjs --revert` (restore backup), then `pnpm install` + restart dsh.
-`$DSH_HOME/agent-dispatch/` can be kept or deleted.
+`$DSH_HOME/agent-dispatch/` can stay or be deleted.
 
-## Development and testing
+## Development and self-test
 
 ```powershell
-node --check index.js                    # syntax check host body
-node --check client.js                   # syntax check browser body
-node scripts/check-i18n.mjs              # zh/en dicts share keys, every t() key exists
-node scripts/selftest.mjs                # pure-function self-test (policy render / config convergence / roster build), 71 checks
-node scripts/smoke-host.mjs              # real apply() under a fake cordis ctx, covering 403, persistence, live-effect, 26 checks
-node scripts/smoke-client.mjs            # stub React + the real /summary payload, renders Panel three times, 20 checks
+node --check index.js                    # syntax check host half
+node --check client.js                   # syntax check browser half
+node scripts/check-i18n.mjs              # zh/en dictionaries same keys, and all t() keys in code exist in dictionaries
+node scripts/check-links.mjs             # every relative Markdown link and image target exists in the repo
+node scripts/selftest.mjs                # pure function self-test (policy render / config convergence / roster build), 71 checks
+node scripts/smoke-host.mjs              # fake cordis ctx runs real apply(), includes 403, persist, instant effect, 26 checks
+node scripts/smoke-client.mjs            # stub React + real /summary data, renders Panel three times, 20 checks
 ```
 
-`selftest.mjs` creates fake peer state in a temp directory, verifying roster priority, region-blocked/unavailable degradation, and config convergence (0 concurrency, invalid peer, invalid keys all clamped to safe values). `smoke-host.mjs` runs the real `apply()` with fake `webServer` / `systemPrompt` services, confirming routes mount, config persists, the section text is a function (so "save takes effect on the next step" is a structural fact, not a claim), and covering non-loopback 403, bad JSON 500, and disposer callability. `smoke-client.mjs` drives the panel with a mini hooks runtime standing in for React, feeds it a `/summary` payload produced by the real host half, and asserts the tree contains roster keys, the verbatim injected policy, and a first-run guide that disappears once seen — `node --check` cannot catch a panel that renders blank on open; this layer exists to catch exactly that.
+`selftest.mjs` creates fake peer states in a temp directory, verifies roster priority, region-blocked and unavailable degradation, config convergence (0 concurrency, illegal peer, illegal key names all clamped to safe values). `smoke-host.mjs` uses fake `webServer` / `systemPrompt` services to run real `apply()`, confirms routes mounted, config persists, segment text is a function (so "save then next step effective" is a structural fact), covers non-loopback 403, bad JSON 500, disposer callable. `smoke-client.mjs` uses mini hooks runtime as stub React, feeds Panel with **actual `/summary` from host half**, asserts render tree has roster keys, has actual injected policy text, guide card disappears after viewed — `node --check` can't catch "opens blank" crashes, this layer catches those specifically.
 
-`npm run check` (syntax), `npm run i18n` (dictionary consistency), `npm run test` (self-test), `npm run smoke` (host half), `npm run smoke:client` (browser half), and `npm run verify` (all five) are wired up in `package.json` scripts.
+`npm run check` (syntax), `npm run i18n` (dictionary consistency), `npm run links` (relative link and image check), `npm run test` (self-test), `npm run smoke` (host half), `npm run smoke:client` (browser half), `npm run verify` (all six) are configured in `package.json` scripts.
+
+## Related documents
+
+| File | Purpose |
+| --- | --- |
+| [README.md](README.md) | Chinese version (Simplified Chinese mirror) |
+| [docs/GLOSSARY.md](docs/GLOSSARY.md) | Glossary: single terminology source for all docs and UI strings in this repo |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contributing guide: commit message format, branch flow, doc conventions |
+| [CHANGELOG.md](CHANGELOG.md) | Version change log |
+| [docs/market-entry.md](docs/market-entry.md) | DSH plugin market entry and inclusion rules |
+| [docs/publish.md](docs/publish.md) | Release process (including steps requiring manual authorization) |
 
 ## License
 
 MIT. Repository: [github.com/Napstablooky233/dsh-agent-dispatch](https://github.com/Napstablooky233/dsh-agent-dispatch).
+Chinese version: [README.md](README.md).
