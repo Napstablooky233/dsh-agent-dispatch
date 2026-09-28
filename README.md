@@ -141,11 +141,12 @@ node --check client.js                   # 语法检查浏览器半身
 node scripts/check-i18n.mjs              # zh/en 字典同键、且代码里 t() 引用的键都在字典里
 node scripts/selftest.mjs                # 纯函数自检（策略渲染 / 配置收敛 / 名册构建），71 项
 node scripts/smoke-host.mjs              # 假 cordis ctx 下跑真实 apply()，含 403、落盘、即时生效，26 项
+node scripts/smoke-client.mjs            # 桩 React + 真 /summary 数据，把 Panel 真渲染三遍，20 项
 ```
 
-`selftest.mjs` 在临时目录造假伙伴状态，验证名册优先级、地区受限与不可用降级、配置收敛（0 并发、非法 peer、非法键名都夹回安全值）。`smoke-host.mjs` 用假 `webServer` / `systemPrompt` 服务跑真实 `apply()`，确认路由挂上、配置落盘、段文本是函数（所以「保存后下一步生效」是结构事实），覆盖非 loopback 403、坏 JSON 500、disposer 可调用。
+`selftest.mjs` 在临时目录造假伙伴状态，验证名册优先级、地区受限与不可用降级、配置收敛（0 并发、非法 peer、非法键名都夹回安全值）。`smoke-host.mjs` 用假 `webServer` / `systemPrompt` 服务跑真实 `apply()`，确认路由挂上、配置落盘、段文本是函数（所以「保存后下一步生效」是结构事实），覆盖非 loopback 403、坏 JSON 500、disposer 可调用。`smoke-client.mjs` 用迷你 hooks 运行时当桩 React，喂给面板的是**宿主半身真跑出来的 `/summary`**，断言渲染树里有名册键、有真注入策略的原文、引导卡看过就消失——`node --check` 抓不到「一开就是空白」这类崩法，这一层专门抓。
 
-`npm run check`（语法）、`npm run test`（自检）、`npm run verify`（三项全跑）已配在 `package.json` 的 scripts 里。
+`npm run check`（语法）、`npm run test`（自检）、`npm run smoke:client`（浏览器半身）、`npm run verify`（五项全跑）已配在 `package.json` 的 scripts 里。
 
 ## 许可
 

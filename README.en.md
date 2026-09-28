@@ -141,11 +141,12 @@ node --check client.js                   # syntax check browser body
 node scripts/check-i18n.mjs              # zh/en dicts share keys, every t() key exists
 node scripts/selftest.mjs                # pure-function self-test (policy render / config convergence / roster build), 71 checks
 node scripts/smoke-host.mjs              # real apply() under a fake cordis ctx, covering 403, persistence, live-effect, 26 checks
+node scripts/smoke-client.mjs            # stub React + the real /summary payload, renders Panel three times, 20 checks
 ```
 
-`selftest.mjs` creates fake peer state in a temp directory, verifying roster priority, region-blocked/unavailable degradation, and config convergence (0 concurrency, invalid peer, invalid keys all clamped to safe values). `smoke-host.mjs` runs the real `apply()` with fake `webServer` / `systemPrompt` services, confirming routes mount, config persists, the section text is a function (so "save takes effect on the next step" is a structural fact, not a claim), and covering non-loopback 403, bad JSON 500, and disposer callability.
+`selftest.mjs` creates fake peer state in a temp directory, verifying roster priority, region-blocked/unavailable degradation, and config convergence (0 concurrency, invalid peer, invalid keys all clamped to safe values). `smoke-host.mjs` runs the real `apply()` with fake `webServer` / `systemPrompt` services, confirming routes mount, config persists, the section text is a function (so "save takes effect on the next step" is a structural fact, not a claim), and covering non-loopback 403, bad JSON 500, and disposer callability. `smoke-client.mjs` drives the panel with a mini hooks runtime standing in for React, feeds it a `/summary` payload produced by the real host half, and asserts the tree contains roster keys, the verbatim injected policy, and a first-run guide that disappears once seen — `node --check` cannot catch a panel that renders blank on open; this layer exists to catch exactly that.
 
-`npm run check` (syntax), `npm run i18n` (dictionary consistency), `npm run test` (self-test), `npm run smoke`, and `npm run verify` (check + i18n + test) are wired up in `package.json` scripts.
+`npm run check` (syntax), `npm run i18n` (dictionary consistency), `npm run test` (self-test), `npm run smoke` (host half), `npm run smoke:client` (browser half), and `npm run verify` (all five) are wired up in `package.json` scripts.
 
 ## License
 

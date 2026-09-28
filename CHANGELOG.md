@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **手填帮手**：provider 输入带 `<datalist>` 提示，model 单独一行，「加入名册」带空值与重复校验；未落盘的条目也会先渲染出来。
 - **`GET /api/agent-dispatch/health`**：返回服务连接状态、配置路径、名册来源计数。
 - **`scripts/check-i18n.mjs`**：校验 zh/en 字典同键、无重复键，且代码里 `t()` 引用的键都在字典里。
+- **`scripts/smoke-client.mjs`（浏览器半身冒烟，20 项）**：用迷你 hooks 运行时当桩 React、迷你 DOM 当宿主页，喂给面板的是**宿主半身真跑出来的 `/summary`**；断言面板渲染三遍（加载态 → 有数据态 → 引导已看过）不抛异常、根节点是 `ad_root`、渲染树里有名册的 `provider:model` 键、有**真注入策略的原文**（证明预览就是发给 agent 的那段）、引导卡看过即消失。`node --check` 抓不到「一开就是空白」这类崩法，这一层专门抓——它上线第一跑就抓出桩运行时没展开函数组件、Panel 根本没被执行的问题。
 - **配置 v2 + v1 迁移**：`CONFIG_VERSION = 2`；v1 的裸模型键在加载时自动补 `our-free-model:` 前缀，`primary` 同步迁移。
 
 ### Changed
@@ -22,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **分工原则写进注入策略**：免费车道承担「简单、机械、自包含、不依赖主会话上下文」的活（批量检索、逐项审计、抄改重排、列清单、翻译、格式化、初稿）；主 agent 只保留最复杂、最需要判断、后果在意的部分（架构与关键设计、跨模块推理、正确性与安全判断、分歧裁决、最终交付）。
 - 派活规则改由数组生成编号（共 9 条），不再手写序号。
 - **不依赖任何插件**：`inject = []` + 嵌套 fiber 机会式获取 `webServer` / `systemPrompt` / `llm`，任一缺席只少对应功能，插件照常可用。
-- 自检扩到 **71 项**、宿主冒烟扩到 **26 项**（0.1.0 时的 19 / 12 项已过时）。
+- 自检扩到 **71 项**、宿主冒烟 **26 项**、浏览器半身冒烟 **20 项**（0.1.0 时的 19 / 12 项已过时）；`npm run verify` 五项全跑。
 
 ### Fixed
 

@@ -26,7 +26,8 @@
     "i18n": "node scripts/check-i18n.mjs",
     "test": "node scripts/selftest.mjs",
     "smoke": "node scripts/smoke-host.mjs",
-    "verify": "npm run check && npm run i18n && npm run test"
+    "smoke:client": "node scripts/smoke-client.mjs",
+    "verify": "npm run check && npm run i18n && npm run test && npm run smoke && npm run smoke:client"
   },
   "keywords": [
     "dsh",
