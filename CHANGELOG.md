@@ -5,56 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-09-28
+
+### Added
+
+- **Community scaffolding that matches the wider DSH plugin ecosystem**: `AGENTS.md` (working notes for AI coding agents), `SECURITY.md`, `CODE_OF_CONDUCT.md`, `INSTALL.md`, `.gitattributes` (LF normalisation) and a GitHub Actions workflow that runs `npm run verify` on Node 22 and 24.
+
+### Changed
+
+- **English is now the primary language of the repository**: `README.md` became the English primary and `README.zh-CN.md` the Chinese mirror (replacing `README.en.md`), the language bar and every relative link were repointed, and `docs/GLOSSARY.md`, `docs/market-entry.md`, `docs/publish.md`, `CONTRIBUTING.md` plus the prose comments in `index.js`, `client.js` and `scripts/*.mjs` were translated. User-facing UI strings in `DICT` and the injected policy text keep their Chinese form, because the panel is bilingual by design.
+- Both READMEs now list every repository document, and `package.json` carries the published description, the `files` allowlist and the repository metadata.
+
+### Fixed
+
+- `.github/workflows/verify.yml` no longer asks `actions/setup-node` to cache npm dependencies: this repository has no lockfile, so the cache step failed before any check ran.
+
 ## [0.2.1] - 2026-09-28
 
 ### Added
 
-- **双语 README 的语言切换条**：两份 README 顶部各一对按钮（`docs/assets/lang/` 下四个自绘 SVG——当前语言深墨高亮、另一语言素纸描边），一次点击即切换语言；不依赖 shields.io 之类外部图床，断网照样显示。
-- **`docs/GLOSSARY.md` 术语表**：中英对照 + 界面来源标签对照 + 书写规则，作为全仓库术语的唯一口径。
-- **`CONTRIBUTING.md` 贡献指南**：提交信息规范（`type(scope): subject`，十种 type，禁止在提交信息里写账号名 / ID / 邮箱）、分支流程、文档与 i18n 约定。
-- **`scripts/check-links.mjs`**：扫描所有 Markdown 的相对链接与图片目标是否真实存在，接进 `npm run verify`（现在是六项）。
+- **Bilingual README language switcher**: a pair of buttons at the top of each README (four hand-drawn SVGs under `docs/assets/lang/` — active language in deep ink, alternate language in light outline) that switches language on click; no dependency on external image hosts like shields.io, works offline.
+- **`docs/GLOSSARY.md` terminology reference**: Chinese–English side-by-side + UI source labels + writing conventions, serving as the single source of truth for repository-wide terminology.
+- **`CONTRIBUTING.md` contribution guide**: commit message conventions (`type(scope): subject`, ten types, no account name / ID / email in commit messages), branching workflow, documentation and i18n conventions.
+- **`scripts/check-links.mjs`**: scans all Markdown files for relative links and image targets that actually exist, integrated into `npm run verify` (now six checks).
 
 ### Changed
 
-- 全仓库用语对齐术语表：统一「主 agent / 帮手 / 名册 / 派活 / 车道 / 宿主半身」，删掉禁用同义词（外派、名单、系统提示词、`lane-probe` 混写）。
-- `client.js` 界面文案：`lane-probed` / `lane-probe` 统一为 `lane probe`；`notesPlaceholder` 的示例改为「不要派给帮手」。
-- `index.js` 注释里的「名单」改为「名册」。
-- 市场条目与 `docs/market-entry.md` 的描述统一为注入 `systemPrompt` 段；硬性要求表更新为真实状态（已 push、topic 已加、仓库年龄仍待满 24 小时）。
+- Repository-wide terminology aligned to the glossary: unified 「main agent / helper / roster / dispatch / lane / host half」, removed banned synonyms (export, manifest, system prompt, `lane-probe` mixed usage).
+- `client.js` UI copy: `lane-probed` / `lane-probe` unified to `lane probe`; `notesPlaceholder` example changed to 「不要派给帮手」.
+- `index.js` comment changes: 「名单」replaced with 「名册」.
+- Marketplace entry and `docs/market-entry.md` description unified to inject `systemPrompt` section; hard requirement table updated to actual status (pushed, topic added, repository age still pending 24 hours).
 
 ## [0.2.0] - 2026-09-28
 
 ### Added
 
-- **首次引导卡**（`settings.onboarding`，order -40）：四步讲清「勾通道 → 勾帮手 → 定规模 → 保存即生效」，`onboarding.seen` 落盘后不再出现。
-- **宿主适配自检**：面板实时显示 `webServer` / `systemPrompt` / `llm` 三个服务各自连没连上、配置路径可不可写、`$DSH_HOME` 在哪、扫到了哪些兄弟车道，以及 llm 枚举失败的原因。
-- **名册三层来源 + `provider:model` 键**：宿主 llm 实枚举（来源 `llm`，标签「宿主已注册」）／兄弟插件 `catalog.json` + `availability.json`（来源 `peer`，标签「车道实测」，带实测首字延迟）／面板手填（来源 `manual`）／内置参考名册（来源 `seed`，11 行快照，只保证面板第一次打开不空）。每行显示来源与状态徽标。
-- **手填帮手**：provider 输入带 `<datalist>` 提示，model 单独一行，「加入名册」带空值与重复校验；未落盘的条目也会先渲染出来。
-- **`GET /api/agent-dispatch/health`**：返回服务连接状态、配置路径、名册来源计数。
-- **`scripts/check-i18n.mjs`**：校验 zh/en 字典同键、无重复键，且代码里 `t()` 引用的键都在字典里。
-- **`scripts/smoke-client.mjs`（浏览器半身冒烟，20 项）**：用迷你 hooks 运行时当桩 React、迷你 DOM 当宿主页，喂给面板的是**宿主半身真跑出来的 `/summary`**；断言面板渲染三遍（加载态 → 有数据态 → 引导已看过）不抛异常、根节点是 `ad_root`、渲染树里有名册的 `provider:model` 键、有**真注入策略的原文**（证明预览就是发给 agent 的那段）、引导卡看过即消失。`node --check` 抓不到「一开就是空白」这类崩法，这一层专门抓——它上线第一跑就抓出桩运行时没展开函数组件、Panel 根本没被执行的问题。
-- **配置 v2 + v1 迁移**：`CONFIG_VERSION = 2`；v1 的裸模型键在加载时自动补 `our-free-model:` 前缀，`primary` 同步迁移。
+- **Onboarding card** (`settings.onboarding`, order -40): four steps explaining 「select channels → select helpers → set capacity → save to take effect」; hidden after `onboarding.seen` is persisted.
+- **Host adaptation self-check**: panel displays real-time connection status of `webServer` / `systemPrompt` / `llm` services, whether config paths are writable, where `$DSH_HOME` is, which sibling lanes were discovered, and reasons for any `llm` enumeration failure.
+- **Roster with three sources + `provider:model` keys**: host `llm` actual enumeration (source `llm`, label「宿主已注册」) / sibling plugin `catalog.json` + `availability.json` (source `peer`, label「车道实测」, with measured first-token latency) / manual panel entry (source `manual`) / built-in reference roster (source `seed`, 11-row snapshot, guarantees non-empty panel on first open). Each row shows source and status badge.
+- **Manual helper entry**: provider input with `<datalist>` suggestions, model on a separate line, 「加入名册」with empty and duplicate validation; unsaved entries render immediately.
+- **`GET /api/agent-dispatch/health`**: returns service connection status, config path, roster source counts.
+- **`scripts/check-i18n.mjs`**: validates zh/en dictionaries have matching keys, no duplicate keys, and all `t()` references in code exist in the dictionaries.
+- **`scripts/smoke-client.mjs` (browser-half smoke, 20 checks)**: uses a mini hooks runtime as a stub React and a mini DOM as the host page; feeds the panel the **real `/summary` output from the host half**; asserts the panel renders three times (loading → data loaded → onboarding seen) without throwing, root node is `ad_root`, the render tree contains roster `provider:model` keys, contains the **actual injected policy text** (proving preview matches what is sent to the agent), and the onboarding card disappears after being seen. `node --check` cannot catch 「opens to a blank screen」 crashes; this layer specifically catches them — on its first run it caught the stub runtime not expanding function components and Panel not being executed at all.
+- **Config v2 + v1 migration**: `CONFIG_VERSION = 2`; v1 bare model keys automatically get `our-free-model:` prefix on load, `primary` migrated in sync.
 
 ### Changed
 
-- **分工原则写进注入策略**：免费车道承担「简单、机械、自包含、不依赖主会话上下文」的活（批量检索、逐项审计、抄改重排、列清单、翻译、格式化、初稿）；主 agent 只保留最复杂、最需要判断、后果在意的部分（架构与关键设计、跨模块推理、正确性与安全判断、分歧裁决、最终交付）。
-- 派活规则改由数组生成编号（共 9 条），不再手写序号。
-- **不依赖任何插件**：`inject = []` + 嵌套 fiber 机会式获取 `webServer` / `systemPrompt` / `llm`，任一缺席只少对应功能，插件照常可用。
-- 自检扩到 **71 项**、宿主冒烟 **26 项**、浏览器半身冒烟 **20 项**（0.1.0 时的 19 / 12 项已过时）；`npm run verify` 六项全跑。
+- **Division of labor written into the injected policy**: free lane handles 「simple, mechanical, self-contained, no dependency on main session context」 work (batch retrieval, per-item audit, copy-edit-rearrange, list-making, translation, formatting, drafting); main agent retains only the most complex, judgment-heavy, high-consequence parts (architecture and key design, cross-module reasoning, correctness and security judgment, dispute arbitration, final delivery).
+- Dispatch rules now generated from an array with numbered items (9 total), no more hand-written numbering.
+- **No dependency on any other plugin**: `inject = []` + nested fiber opportunistic acquisition of `webServer` / `systemPrompt` / `llm`; any missing service only disables the corresponding feature, plugin remains fully functional.
+- Self-check expanded to **71 checks**, host smoke to **26 checks**, browser-half smoke to **20 checks** (the 19 / 12 checks from 0.1.0 are obsolete); `npm run verify` runs all six checks.
 
 ### Fixed
 
-- 修掉 `longTaskOnly = false` 时策略规则编号跳号（曾输出 1,2,3,5,6,7）。
-- `POST /reset` 从「与当前配置合并默认值」改为**真替换**：用户手填与多加的帮手键也会被一起清掉。
-- 面板补齐 `.ad_badge.unknown` 与 `.ad_status.idle` 两个缺失的样式类。
-- `scripts/check-i18n.mjs` 把 `document.createElement('style')` 误判成 `t('style')` 的假阳性（正则加左边界）。
+- Fixed strategy rule numbering skip when `longTaskOnly = false` (previously output 1,2,3,5,6,7).
+- `POST /reset` changed from 「merge defaults with current config」 to **true replacement**: manually added helper keys are now also cleared.
+- Panel added missing style classes `.ad_badge.unknown` and `.ad_status.idle`.
+- `scripts/check-i18n.mjs` false positive where `document.createElement('style')` was misidentified as `t('style')` (regex now includes left boundary).
 
 ## [0.1.0] - 2026-08-25
 
 ### Added
 
-- **宿主半身** (`index.js`)：注册 `systemPrompt` 策略段 (`agent-dispatch:policy`，order 180)，把派活规则注入每一步。
-- **同源 HTTP API** (`/api/agent-dispatch/*`)：`GET /summary`、`POST /config`、`POST /reset`、`POST /rescan`；非 loopback 请求 403。
-- **浏览器半身面板** (`client.js`)：手写 `window.__ModuleLoader__` 加载，设置分区可配置派活模式、通道、帮手模型、并发上限与附加要求。
-- **配置原子落盘**：配置写入 `$DSH_HOME/agent-dispatch/config.json`，tmp + rename。
-- **纯函数自检** (`scripts/selftest.mjs`) 与**宿主冒烟测试** (`scripts/smoke-host.mjs`)：假 cordis ctx 下跑真实 `apply()`，覆盖 403、落盘、即时生效、disposer。
-- **安装脚本** (`scripts/install-into-profile.mjs`)：自动改 profile 清单（预演 / 应用 / 撤回）。
+- **Host half** (`index.js`): registers `systemPrompt` policy section (`agent-dispatch:policy`, order 180), injecting dispatch rules into every step.
+- **Same-origin HTTP API** (`/api/agent-dispatch/*`): `GET /summary`, `POST /config`, `POST /reset`, `POST /rescan`; non-loopback requests get 403.
+- **Browser-half panel** (`client.js`): loaded via hand-written `window.__ModuleLoader__`, settings section configurable for dispatch mode, channels, helper models, concurrency cap and extra requirements.
+- **Atomic config persistence**: config written to `$DSH_HOME/agent-dispatch/config.json`, tmp + rename.
+- **Pure-function self-check** (`scripts/selftest.mjs`) and **host smoke test** (`scripts/smoke-host.mjs`): runs real `apply()` under a fake cordis ctx, covering 403, persistence, immediate effect, disposer.
+- **Install script** (`scripts/install-into-profile.mjs`): automatically modifies profile manifest (dry-run / apply / rollback).

@@ -1,7 +1,7 @@
 {
   "name": "dsh-agent-dispatch",
-  "version": "0.2.1",
-  "description": "帮手调度台 — 一块可见的设置面板：决定主 agent 要不要别的 agent 帮忙、准哪几个帮手（免费模型 / 子代理 / 专家 / 团队）上场，并把这条分工策略注入 systemPrompt 段，保存即生效。",
+  "version": "0.2.2",
+  "description": "Helper dispatch — a visible settings panel that decides whether the main agent may delegate work to helper agents, which helpers are allowed (free-lane models / subagents / experts / teams), and injects that division of labor into a systemPrompt section, taking effect on save.",
   "type": "module",
   "main": "./index.js",
   "exports": {
@@ -17,8 +17,12 @@
     "scripts",
     "docs",
     "README.md",
-    "README.en.md",
+    "README.zh-CN.md",
     "CONTRIBUTING.md",
+    "AGENTS.md",
+    "INSTALL.md",
+    "SECURITY.md",
+    "CODE_OF_CONDUCT.md",
     "CHANGELOG.md",
     "LICENSE"
   ],
