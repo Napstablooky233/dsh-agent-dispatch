@@ -59,7 +59,7 @@ Six sections, top to bottom:
 | Extra notes | Written verbatim into injected text |
 | View injected text | Expand to see the **actual** policy sent to the agent, not a mockup |
 
-Top also has **first-run guide** (four steps, shown once) and **host adaptation check** (explains why each feature is present or absent).
+Top also has **first-run guide** (four steps, shown once) and **host adaptation check** (explains why each feature is present or absent). On first run the sidebar's settings area also shows a compact **onboarding card** with its own layout: "Open settings" jumps straight here, "Not now" reads it once and done.
 
 ## Configuration keys
 
