@@ -1,73 +1,78 @@
-# 发布与上架 Runbook
+# Publish and Listing Runbook
 
-本机现状（2026-09-28 实测）：`github.com` / `api.github.com` / `registry.npmjs.org` DNS 与 HTTPS **都通**；但 `git credential.helper` 为空、`cmdkey` 里没有 github 凭据、`~/.npmrc` 与 `~/.git-credentials` 都不存在、`GITHUB_TOKEN` / `GH_TOKEN` / `NPM_TOKEN` 都没设、`gh` CLI 未安装、`~/.ssh` 为空。
+Current state on this machine (verified 2026-09-28): DNS and HTTPS for `github.com`, `api.github.com`, and `registry.npmjs.org` all work; but `git credential.helper` is empty, `cmdkey` has no GitHub credentials, neither `~/.npmrc` nor `~/.git-credentials` exists, `GITHUB_TOKEN` / `GH_TOKEN` / `NPM_TOKEN` are not set, the `gh` CLI is not installed, and `~/.ssh` is empty.
 
-**结论：本地能做的一次性做完（已做），需要登录的两步必须由你本人授权。**
+**Conclusion: complete the steps that can be done locally now (already done). The steps that need credentials must be authorized by the repository owner.**
 
-## 已完成的本地部分
+Status as of 2026-09-28: the repository is live at https://github.com/Napstablooky233/dsh-agent-dispatch (topics added, 24 files tracked); the remaining step is the pull request against `awesome-dsh-plugin`, which the age check opens up once the repository is 24 hours old.
 
-- `git init` + 首次提交（见 `git log`）。
-- 上架条目写好：`docs/awesome-dsh-plugin/Napstablooky233__dsh-agent-dispatch.yml`。
-- 安装脚本、自检、冒烟、i18n 检查全绿。
+## Local steps already completed
 
-## 需要你授权才能做的部分
+- `git init` plus the first commit (see `git log`).
+- The listing entry has been written: `docs/awesome-dsh-plugin/Napstablooky233__dsh-agent-dispatch.yml`.
+- Installation script, self-check, smoke, and i18n checks all pass.
 
-### 第 1 步：推到你的 GitHub
+## Steps requiring your authorization
+
+### Step 1: push to your GitHub
 
 ```powershell
-# 仓库还不存在时，先在 GitHub 网页建一个空仓库（不要勾 README/.gitignore），然后：
+# When the repository does not exist yet, create an empty one on the GitHub website first (do not check README/.gitignore), then:
 git -C D:\dsh-agent-dispatch remote add origin https://github.com/Napstablooky233/dsh-agent-dispatch.git
 git -C D:\dsh-agent-dispatch push -u origin main
 ```
 
-首次 push 会弹 Git Credential Manager 的浏览器授权（或让你填 PAT）。授权一次后，之后的 push 就不用再登。
+The first push will trigger Git Credential Manager browser authorization (or prompt for a PAT). After authorizing once, subsequent pushes will not require re-authentication.
 
-### 第 2 步：给仓库加 `dsh-plugin` topic
+### Step 2: add the `dsh-plugin` topic to the repository
 
-官方要求仓库带这个 topic。网页：仓库首页右上 `⚙` → Topics → 填 `dsh-plugin` → Save。
-有 PAT 时也可以一条命令：
+The official requirement is that the repository has this topic. On the website: click the settings icon on the repository homepage (top right) → Topics → type `dsh-plugin` → Save.
+
+With a PAT, one command also works:
 
 ```powershell
 $h = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'User-Agent' = 'dsh-agent-dispatch' }
 Invoke-RestMethod -Method Put -Uri 'https://api.github.com/repos/Napstablooky233/dsh-agent-dispatch/topics' -Headers $h -ContentType 'application/json' -Body '{"names":["dsh-plugin","dsh"]}'
 ```
 
-### 第 3 步：向 awesome-dsh-plugin 提 PR
+### Step 3: open a PR against `awesome-dsh-plugin`
 
 ```powershell
-# fork + clone（网页 fork 更省事）
-git clone https://github.com/<你的用户名>/awesome-dsh-plugin
+# fork and clone (forking on the web is easier)
+git clone https://github.com/<your-username>/awesome-dsh-plugin
 cd awesome-dsh-plugin
 git checkout -b add-dsh-agent-dispatch
-# 把本仓库的 docs/awesome-dsh-plugin/Napstablooky233__dsh-agent-dispatch.yml
-# 复制到本仓库的 data/plugins/Napstablooky233__dsh-agent-dispatch.yml
+# Copy the file from this repository:
+# docs/awesome-dsh-plugin/Napstablooky233__dsh-agent-dispatch.yml
+# to this repository:
+# data/plugins/Napstablooky233__dsh-agent-dispatch.yml
 git add data/plugins/Napstablooky233__dsh-agent-dispatch.yml
 git commit -m "Add Napstablooky233/dsh-agent-dispatch"
 git push -u origin add-dsh-agent-dispatch
 ```
 
-然后在网页上向 `awesome-dsh-plugin/awesome-dsh-plugin:main` 开 PR。
+Then open a PR on the web against `awesome-dsh-plugin/awesome-dsh-plugin:main`.
 
-> ⚠️ 仓库至少满 **1 天**才能过 CI。刚 push 就提 PR 会被年龄检查挡下——等一天再提，或提了等 CI 重跑。
+> Note: the repository must be at least **1 day** old to pass CI. Opening a PR right after pushing will be blocked by the age check — either wait a day or push and wait for CI to re-run.
 
-### 第 4 步（可选）：发 npm
+### Step 4 (optional): publish to npm
 
-不影响收录，只为更好的安装体验（预构建安装免 `allowBuilds` 构建授权）：
+Does not affect listing, but provides a better installation experience (pre-built install avoids `allowBuilds` build authorization):
 
 ```powershell
-npm login          # 需要你本人浏览器授权
-npm publish        # 包名 dsh-agent-dispatch 当前为空
+npm login          # requires your browser authorization
+npm publish        # the package name dsh-agent-dispatch is currently empty
 ```
 
-## 上架后怎么验证
+## How to verify after listing
 
 ```powershell
-# 市场数据源里是否出现本插件
+# Check whether this plugin appears in the market data source
 (Invoke-RestMethod https://awesome-dsh-plugin.com/plugins.json).plugins |
   Where-Object { $_.name -like '*agent-dispatch*' } | ConvertTo-Json -Depth 3
 ```
 
-出现条目后，用户即可在 dsh-market 里一键安装，或直接：
+Once an entry appears, users can install it with one click in dsh-market, or directly:
 
 ```powershell
 dsh plugin --profile web add Napstablooky233/dsh-agent-dispatch

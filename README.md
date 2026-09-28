@@ -1,170 +1,174 @@
 <div align="center">
-<a href="README.md"><img src="docs/assets/lang/zh-on.svg" alt="简体中文" height="30"></a>&nbsp;&nbsp;<a href="README.en.md"><img src="docs/assets/lang/en-off.svg" alt="English" height="30"></a>
+<a href="README.zh-CN.md"><img src="docs/assets/lang/zh-off.svg" alt="Chinese (Simplified)" height="30"></a>&nbsp;&nbsp;<a href="README.md"><img src="docs/assets/lang/en-on.svg" alt="English" height="30"></a>
 </div>
 
-# dsh-agent-dispatch · 帮手调度台
+# dsh-agent-dispatch · Agent Dispatch
 
-> 一块设置面板：决定主 agent 要不要别的 agent 帮忙、准哪几个帮手上场——而且**真的生效**。策略以 `systemPrompt` 段的形式注入，保存即生效。
+> One settings pane: decide whether the main agent gets help, which helpers play — and it **actually works**. Policy is injected as a `systemPrompt` section; save and it takes effect.
 
-- **看得见**：一个设置分区，显示状态、通道与帮手名册（含实测首字延迟）。
-- **点得动**：总开关 / 三态模式 / 通道勾选 / 帮手勾选 / 并发上限 / 附加要求，改完点保存。
-- **真的生效**：策略文本是函数，每步重新求值；关闭时注入「本轮不派活」的明确指令。
+- **Visible**: one settings section showing status, channels, and helper roster (with measured TTFT).
+- **Actionable**: master switch / three-mode selector / channel checkboxes / helper checkboxes / concurrency limit / extra notes — change and save.
+- **Actually effective**: policy text is a function, re-evaluated every step; when disabled it injects an explicit "no dispatch this turn" instruction.
 
-## 它解决什么 · 为什么省 token
+## What it solves · Why it saves tokens
 
-主 agent 每推进一步都要重发完整上下文（系统提示 + 历史），按 `cacheMiss` 计费，是 token 账单的大头。独立的帮手各有独立上下文，且免费车道输入输出零成本。所以省钱的关键不是「少说话」，而是**把自包含的活挪出去**。这个插件管的就是「挪哪些、挪给谁、挪几个」。
+The main agent resends the full context (system prompt + history) every step, billed by `cacheMiss` — the biggest line on the token bill. Independent helpers each have their own context, and the free lane has zero cost for input and output. So the key to saving money isn't "talk less", it's **moving self-contained work out**. This plugin manages "what to move, to whom, how many".
 
-分工原则（写死在注入文本里）：简单、机械、自包含、不依赖主会话上下文的活（批量检索、逐项审计、抄改重排、列清单、翻译、格式化、初稿）派给免费车道的帮手；最难、最需要判断、后果在意的部分（架构与关键设计、跨模块推理、正确性与安全判断、分歧裁决、最终交付）留在主 agent。
+Division of labor (hard-coded in injected text): simple, mechanical, self-contained work that does not depend on main-session context (bulk retrieval, item-by-item audit, copy-edit-reorder, list making, translation, formatting, first drafts) goes to free-lane helpers; the hardest, most judgment-heavy, consequence-sensitive parts (architecture and key design, cross-module reasoning, correctness and safety judgments, dispute resolution, final delivery) stay with the main agent.
 
-## 安装
+## Install
 
-插件目录：`D:\dsh-agent-dispatch`（本仓库）。两条路：
+Plugin directory: `D:\dsh-agent-dispatch` (this repo). Two ways:
 
-### A. 自动改 profile 清单（推荐）
+### A. Auto-edit profile manifest (recommended)
 
 ```powershell
-node scripts/install-into-profile.mjs            # 预演，打印将改的两行
-node scripts/install-into-profile.mjs --apply    # 真的改（自动备份 package.json）
-node scripts/install-into-profile.mjs --revert   # 撤回到备份
+node scripts/install-into-profile.mjs            # dry run, prints the two lines to change
+node scripts/install-into-profile.mjs --apply    # actually edit (auto-backup package.json)
+node scripts/install-into-profile.mjs --revert   # restore from backup
 ```
 
-脚本只动一处文件：`<DSH_HOME>/profiles/<profile>/package.json` 的两处——`dependencies` 里的 `link:` 依赖，和 `dsh.profile.bundles` 里的包名。改完在该 profile 目录跑 `pnpm install`（让 `link:` 变成 node_modules 里的 junction）并**重启 dsh**（`patchReload: "live"` 管得了热更，管不了新增 bundle，重启会结束当前 GUI 会话）。
+The script touches only one file: `<DSH_HOME>/profiles/<profile>/package.json` in two places — the `link:` dependency in `dependencies`, and the package name in `dsh.profile.bundles`. After editing, run `pnpm install` in that profile directory (to turn the `link:` into a junction in `node_modules`) and **restart dsh** (`patchReload: "live"` handles hot reload, but not a new bundle; restart ends the current GUI session).
 
-> 注意：`pnpm install` 会把 node_modules 对齐到 `package.json` 的声明版本——如果某个插件此前被插件管理器更新到更高版本，这一步会把它降回声明值。想保持新版：`pnpm add <包>@<版本>` 后再重启。
+> Note: `pnpm install` aligns `node_modules` to the versions declared in `package.json` — if a plugin was previously updated to a higher version by the plugin manager, this step will downgrade it to the declared value. To keep the newer version: `pnpm add <pkg>@<version>` then restart.
 
-### B. 手动
+### B. Manual
 
-等价于手动改 `C:\Users\qq167\.dsh\profiles\web\package.json` 两处：
+Equivalent to manually editing `C:\Users\qq167\.dsh\profiles\web\package.json` in two places:
 
-1. `dependencies` 里加：
+1. In `dependencies` add:
    ```json
    "dsh-agent-dispatch": "link:D:/dsh-agent-dispatch"
    ```
-2. `dsh.profile.bundles` 数组里加包名：`"dsh-agent-dispatch"`
+2. In the `dsh.profile.bundles` array add the package name: `"dsh-agent-dispatch"`
 
-然后 `pnpm install` + 重启 dsh。
+Then `pnpm install` + restart dsh.
 
-装好后：设置 → **帮手调度**。
+After install: Settings → **Agent Dispatch**.
 
-## 面板速览
+## Panel overview
 
-六个区块，从上到下：
+Six sections, top to bottom:
 
-| 区块 | 内容 |
+| Section | Content |
 | --- | --- |
-| 总开关与三态模式 | 开启 / 关闭；模式三种：关闭 / 先问我 / 直接派 |
-| 帮手通道 | workflow 扇出 / 子代理单派 / Agency 专家 / Agent Teams；没勾的通道写进禁止清单 |
-| 帮手名册 | 三层来源合并（宿主已注册 / 车道实测 / 手填 + 内置参考），每行标来源；★ 是默认主力 |
-| 派活规模 | 同时最多几个帮手（1–8）、任务超过多少步才值得派、短任务是否禁止派活 |
-| 附加要求 | 原样写进注入文本 |
-| 查看注入文本 | 展开就是**真正**发给 agent 的策略，不是示意图 |
+| Master switch & three-mode selector | On / Off; three modes: Off / Ask me / Auto |
+| Helper channels | workflow fan-out / single subagent / Agency experts / Agent Teams; unchecked channels go to the deny list |
+| Helper roster | Three merged sources (host-registered / lane probe / manual + built-in reference), each row labeled with source; ★ marks the default primary |
+| Dispatch scale | Max simultaneous helpers (1–8), step threshold for dispatch, whether short tasks are blocked from dispatch |
+| Extra notes | Written verbatim into injected text |
+| View injected text | Expand to see the **actual** policy sent to the agent, not a mockup |
 
-顶部另有**首次引导**（四步，看过一次不再出现）与**宿主适配自检**（解释每个功能为什么在或不在）。
+Top also has **first-run guide** (four steps, shown once) and **host adaptation check** (explains why each feature is present or absent).
 
-## 配置键表
+## Configuration keys
 
-落盘于 `$DSH_HOME/agent-dispatch/config.json`（默认 `C:\Users\qq167\.dsh\agent-dispatch\config.json`），原子写（tmp + rename）。面板每次打开重新读取，手改此文件与面板改等价。
+Persisted to `$DSH_HOME/agent-dispatch/config.json` (default `C:\Users\qq167\.dsh\agent-dispatch\config.json`), atomic write (tmp + rename). Panel re-reads on every open; hand-editing this file is equivalent to panel changes.
 
-| 键 | 类型 | 默认 | 作用 |
+| Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `version` | number | 2 | 配置结构版本；v1 的裸模型键加载时自动补 provider 前缀 |
-| `enabled` | boolean | `true` | 总开关；关 = 注入「不派活」明确指令 |
-| `mode` | `'off' \| 'ask' \| 'auto'` | `'ask'` | 派活模式 |
-| `peer` | string | `'our-free-model'` | 名册默认 provider 名（只决定参考名册挂在谁名下，不要求这台机器真有它） |
-| `discover.llm` | boolean | `true` | 是否问宿主 llm 服务枚举 provider/model |
-| `discover.siblings` | boolean | `true` | 是否扫 `$DSH_HOME` 下兄弟插件的状态文件 |
-| `channels.workflow` | boolean | `true` | 允许 workflow 扇出 |
-| `channels.subagent` | boolean | `true` | 允许子代理单派 |
-| `channels.experts` | boolean | `false` | 允许 Agency 专家 |
-| `channels.teams` | boolean | `false` | 允许 Agent Teams |
-| `helpers.\{provider}:{model\}` | object | 见下 | 键为 `provider:model`，值 `{ enabled: boolean, label?: string }` |
-| `primary` | string | `'our-free-model:nemotron-3-ultra-free'` | 默认主力帮手；必须是已勾选的模型，否则退回第一个已勾选 |
-| `maxHelpers` | number | 4 | 同时最多派几个（夹回 1–8） |
-| `minSteps` | number | 3 | 任务超过多少步才值得派（夹回 1–20） |
-| `longTaskOnly` | boolean | `true` | 打开后一句话能答完的活不许派 |
-| `onboarding.seen` | boolean | `false` | 看过首次引导后置 `true` |
-| `notes` | string | `''` | 附加要求，原样写进注入文本（截尾 2000 字符） |
+| `version` | number | 2 | Config structure version; v1 bare model keys get provider prefix auto-added on load |
+| `enabled` | boolean | `true` | Master switch; off = injects explicit "no dispatch" instruction |
+| `mode` | `'off' \| 'ask' \| 'auto'` | `'ask'` | Dispatch mode |
+| `peer` | string | `'our-free-model'` | Roster default provider name (only decides which provider the reference roster sits under; does not require this machine to actually have it) |
+| `discover.llm` | boolean | `true` | Whether to ask host LLM service to enumerate provider/model |
+| `discover.siblings` | boolean | `true` | Whether to scan sibling plugins' status files under `$DSH_HOME` |
+| `channels.workflow` | boolean | `true` | Allow workflow fan-out |
+| `channels.subagent` | boolean | `true` | Allow single subagent dispatch |
+| `channels.experts` | boolean | `false` | Allow Agency experts |
+| `channels.teams` | boolean | `false` | Allow Agent Teams |
+| `helpers.{provider}:{model}` | object | see below | Key is `provider:model`, value `{ enabled: boolean, label?: string }` |
+| `primary` | string | `'our-free-model:nemotron-3-ultra-free'` | Default primary helper; must be an enabled model, otherwise falls back to first enabled |
+| `maxHelpers` | number | 4 | Max simultaneous helpers (clamped to 1–8) |
+| `minSteps` | number | 3 | Task must exceed this many steps to be worth dispatching (clamped to 1–20) |
+| `longTaskOnly` | boolean | `true` | When on, tasks answerable in one sentence are not dispatched |
+| `onboarding.seen` | boolean | `false` | Set `true` after first-run guide viewed |
+| `notes` | string | `''` | Extra notes, written verbatim into injected text (truncated to 2000 characters) |
 
-出厂默认 `helpers` 勾选了六个 `our-free-model` 下的实测可用模型：`nemotron-3-ultra-free`、`nemotron-3.5-lightning-free`、`space-bunny-free`、`longcat-2.5-preview-free`、`ling-3.0-flash-fin-free`、`mimo-v2.5-free`（v1 配置无 provider 前缀的键自动补 `our-free-model:`）。
+Factory default `helpers` enables six verified-available `our-free-model` models: `nemotron-3-ultra-free`, `nemotron-3.5-lightning-free`, `space-bunny-free`, `longcat-2.5-preview-free`, `ling-3.0-flash-fin-free`, `mimo-v2.5-free` (v1 config keys without provider prefix auto-prefixed with `our-free-model:`).
 
-## 通道与名册
+## Channels and roster
 
-### 通道（`CHANNEL_IDS` 顺序即面板顺序）
+### Channels (`CHANNEL_IDS` order = panel order)
 
-| id | 标签 | 说明 |
+| id | Label | Description |
 | --- | --- | --- |
-| `workflow` | workflow 扇出 | 一个脚本里并排跑多个独立子任务，可逐项指定 provider/model |
-| `subagent` | 子代理单派 | 把一整块独立任务丢给另一个上下文，只收回结果 |
-| `experts` | Agency 专家 | 按领域召唤专家人格（需在设置里已启用） |
-| `teams` | Agent Teams 团队 | 多成员共享任务板协作（只有用户明确要求才建队） |
+| `workflow` | workflow fan-out | Run multiple independent sub-tasks side by side in one script, each can specify its own provider/model |
+| `subagent` | single subagent | Delegate one whole independent task to another context, only get the result back |
+| `experts` | Agency experts | Summon expert personas by domain (requires enabling in settings) |
+| `teams` | Agent Teams | Multi-member shared task board collaboration (only created when user explicitly requests) |
 
-### 名册三层来源
+### Roster three sources
 
-每一行都有来源标签，面板显示为「车道实测 / 宿主已注册 / 手填 / 内置参考」：
+Every row has a source tag; panel displays as "lane probe / host-registered / manual / built-in":
 
-1. **宿主 llm 服务实枚举**（来源 `llm`，标签「宿主已注册」）——唯一能证明「这个 provider/model 现在真的能调」的来源。
-2. **兄弟插件状态文件**（来源 `peer`，标签「车道实测」）——扫 `$DSH_HOME/<任意插件目录>/catalog.json` + `availability.json`，不写死名字，拿到实测首字延迟。
-3. **面板手填**（来源 `manual`，标签「手填」）——用户可填任意 `provider:model`，哪怕别的付费车道。
-4. **内置参考名册**（来源 `seed`，标签「内置参考」）——11 行 `our-free-model` 模型快照，保证面板第一次打开不空。**不是事实来源**，只说明「长什么样」。
+1. **Host LLM service actual enumeration** (source `llm`, tag "host-registered") — the only source that can prove "this provider/model can actually be called right now".
+2. **Sibling plugin status files** (source `peer`, tag "lane probe") — scans `$DSH_HOME/<any plugin dir>/catalog.json` + `availability.json`, no hardcoded names, gets measured TTFT.
+3. **Panel manual entry** (source `manual`, tag "manual") — user can enter any `provider:model`, even other paid lanes.
+4. **Built-in reference roster** (source `seed`, tag "built-in") — 11-row `our-free-model` model snapshot, ensures panel is not empty on first open. **Not a factual source**, only shows "what it looks like".
 
-合并优先级：`llm 枚举 → verified=true`；`兄弟插件 availability → state / ttftMs`；`内置参考 → 只补长什么样`，不覆盖上面两者的判定。
+Merge priority: `llm enumeration → verified=true`; `sibling plugin availability → state / ttftMs`; `built-in reference → only fills appearance`, does not override the above two judgments.
 
 ## HTTP API
 
-全部走同源路由 `/api/agent-dispatch/*`，与宿主半身在同一进程。**只服务本机浏览器，非 loopback 一律 403。**
+All routes under same-origin `/api/agent-dispatch/*`, co-located with host half in the same process. **Only serves local browser; non-loopback returns 403.**
 
-| 方法 | 路径 | 作用 |
+| Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/agent-dispatch/summary` | 返回当前配置、名册、预览策略、统计、宿主适配状态 |
-| GET | `/api/agent-dispatch/health` | 返回服务连接状态、配置路径、名册来源计数 |
-| POST | `/api/agent-dispatch/config` | body `{ patch }` 合并配置并落盘，返回完整 summary |
-| POST | `/api/agent-dispatch/rescan` | 重新枚举 llm 并重建名册 |
-| POST | `/api/agent-dispatch/reset` | 恢复出厂默认并落盘 |
+| GET | `/api/agent-dispatch/summary` | Returns current config, roster, preview policy, stats, host adaptation status |
+| GET | `/api/agent-dispatch/health` | Returns service connectivity status, config path, roster source counts |
+| POST | `/api/agent-dispatch/config` | Body `{ patch }` merges config and persists, returns full summary |
+| POST | `/api/agent-dispatch/rescan` | Re-enumerates LLM and rebuilds roster |
+| POST | `/api/agent-dispatch/reset` | Restores factory default and persists |
 
-## 兼容与降级
+## Compatibility and graceful degradation
 
-`inject = []` + 嵌套 fiber 机会式获取 `webServer` / `systemPrompt` / `llm` 三个服务。**任一缺席只少对应功能，插件照常可用**：
+`inject = []` + nested fiber opportunistic acquisition of `webServer` / `systemPrompt` / `llm` three services. **Any one missing only loses the corresponding feature; plugin remains usable**:
 
-- 无 `webServer`：面板 API 不可用（浏览器半身不能读写配置），但 `systemPrompt` 段照常注入。
-- 无 `systemPrompt`：策略不注入（面板改完不生效），但 API 与名册正常。
-- 无 `llm`：名册只剩车道实测 + 内置参考 + 手填；手填一条 `provider:model` 仍然可用。
-- 无任何服务：面板照常可用（纯内存配置 + 内置参考名册）。
+- No `webServer`: panel API unavailable (browser half cannot read/write config), but `systemPrompt` section still injects.
+- No `systemPrompt`: policy not injected (panel changes don't take effect), but API and roster work normally.
+- No `llm`: roster only has lane probe + built-in reference + manual; manual entry of one `provider:model` still works.
+- No services at all: panel still usable (pure in-memory config + built-in reference roster).
 
-写盘失败不致命：配置先改内存并立刻生效，面板提示「写盘失败，重启后回旧值」。
+Write failure is not fatal: config updates memory first and takes effect immediately; panel shows "write failed, will revert on restart".
 
-## 卸载
+## Uninstall
 
-`node scripts/install-into-profile.mjs --revert`（恢复备份），然后 `pnpm install` + 重启 dsh。
-`$DSH_HOME/agent-dispatch/` 可留可删。
+`node scripts/install-into-profile.mjs --revert` (restore backup), then `pnpm install` + restart dsh.
+`$DSH_HOME/agent-dispatch/` can stay or be deleted.
 
-## 开发与自测
+## Development and self-test
 
 ```powershell
-node --check index.js                    # 语法检查宿主半身
-node --check client.js                   # 语法检查浏览器半身
-node scripts/check-i18n.mjs              # zh/en 字典同键、且代码里 t() 引用的键都在字典里
-node scripts/check-links.mjs             # Markdown 相对链接与图片目标是否真实存在
-node scripts/selftest.mjs                # 纯函数自检（策略渲染 / 配置收敛 / 名册构建），71 项
-node scripts/smoke-host.mjs              # 假 cordis ctx 下跑真实 apply()，含 403、落盘、即时生效，26 项
-node scripts/smoke-client.mjs            # 桩 React + 真 /summary 数据，把 Panel 真渲染三遍，20 项
+node --check index.js                    # syntax check host half
+node --check client.js                   # syntax check browser half
+node scripts/check-i18n.mjs              # zh/en dictionaries same keys, and all t() keys in code exist in dictionaries
+node scripts/check-links.mjs             # every relative Markdown link and image target exists in the repo
+node scripts/selftest.mjs                # pure function self-test (policy render / config convergence / roster build), 71 checks
+node scripts/smoke-host.mjs              # fake cordis ctx runs real apply(), includes 403, persist, instant effect, 26 checks
+node scripts/smoke-client.mjs            # stub React + real /summary data, renders Panel three times, 20 checks
 ```
 
-`selftest.mjs` 在临时目录造假伙伴状态，验证名册优先级、地区受限与暂不可用的降级、配置收敛（0 并发、非法 peer、非法键名都夹回安全值）。`smoke-host.mjs` 用假 `webServer` / `systemPrompt` 服务跑真实 `apply()`，确认路由挂上、配置落盘、段文本是函数（所以「保存后下一步生效」是结构事实），覆盖非 loopback 403、坏 JSON 500、disposer 可调用。`smoke-client.mjs` 用迷你 hooks 运行时当桩 React，喂给面板的是**宿主半身真跑出来的 `/summary`**，断言渲染树里有名册键、有真注入策略的原文、引导卡看过就消失——`node --check` 抓不到「一开就是空白」这类崩法，这一层专门抓。
+`selftest.mjs` creates fake peer states in a temp directory, verifies roster priority, region-blocked and unavailable degradation, config convergence (0 concurrency, illegal peer, illegal key names all clamped to safe values). `smoke-host.mjs` uses fake `webServer` / `systemPrompt` services to run real `apply()`, confirms routes mounted, config persists, segment text is a function (so "save then next step effective" is a structural fact), covers non-loopback 403, bad JSON 500, disposer callable. `smoke-client.mjs` uses mini hooks runtime as stub React, feeds Panel with **actual `/summary` from host half**, asserts render tree has roster keys, has actual injected policy text, guide card disappears after viewed — `node --check` can't catch "opens blank" crashes, this layer catches those specifically.
 
-`npm run check`（语法）、`npm run i18n`（字典一致性）、`npm run links`（链接检查）、`npm run test`（自检）、`npm run smoke`（宿主半身）、`npm run smoke:client`（浏览器半身）、`npm run verify`（六项全跑）已配在 `package.json` 的 scripts 里。
+`npm run check` (syntax), `npm run i18n` (dictionary consistency), `npm run links` (relative link and image check), `npm run test` (self-test), `npm run smoke` (host half), `npm run smoke:client` (browser half), `npm run verify` (all six) are configured in `package.json` scripts.
 
-## 相关文档
+## Related documents
 
-| 文件 | 用途 |
+| File | Purpose |
 | --- | --- |
-| [README.en.md](README.en.md) | 英文版（English mirror） |
-| [docs/GLOSSARY.md](docs/GLOSSARY.md) | 术语表：本仓库所有文档与界面文案的唯一口径 |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南：提交信息规范、分支流程、文档约定 |
-| [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
-| [docs/market-entry.md](docs/market-entry.md) | 上架 DSH 插件市场的条目与收录规则 |
-| [docs/publish.md](docs/publish.md) | 发布流程（含需要人工授权的步骤） |
+| [README.zh-CN.md](README.zh-CN.md) | Chinese version (Simplified Chinese mirror) |
+| [AGENTS.md](AGENTS.md) | Working notes for AI coding agents: layout, contract, checks |
+| [INSTALL.md](INSTALL.md) | Install, verify and uninstall steps |
+| [docs/GLOSSARY.md](docs/GLOSSARY.md) | Glossary: single terminology source for all docs and UI strings in this repo |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contributing guide: commit message format, branch flow, doc conventions |
+| [SECURITY.md](SECURITY.md) | Security policy and how to report a vulnerability |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community code of conduct |
+| [CHANGELOG.md](CHANGELOG.md) | Version change log |
+| [docs/market-entry.md](docs/market-entry.md) | DSH plugin market entry and inclusion rules |
+| [docs/publish.md](docs/publish.md) | Release process (including steps requiring manual authorization) |
 
-## 许可
+## License
 
-MIT。仓库：[github.com/Napstablooky233/dsh-agent-dispatch](https://github.com/Napstablooky233/dsh-agent-dispatch)。
-English version: [README.en.md](README.en.md).
+MIT. Repository: [github.com/Napstablooky233/dsh-agent-dispatch](https://github.com/Napstablooky233/dsh-agent-dispatch).
+Chinese version: [README.zh-CN.md](README.zh-CN.md).
