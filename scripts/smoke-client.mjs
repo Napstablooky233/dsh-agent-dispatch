@@ -170,6 +170,13 @@ function collectTypes(node, out = []) {
   for (const child of node.children ?? []) collectTypes(child, out)
   return out
 }
+function findAll(node, predicate, out = []) {
+  if (Array.isArray(node)) { for (const child of node) findAll(child, predicate, out); return out }
+  if (!node || typeof node !== 'object') return out
+  if (predicate(node)) out.push(node)
+  for (const child of node.children ?? []) findAll(child, predicate, out)
+  return out
+}
 
 // ── Load the browser half ───────────────────────────────────────────────────
 let spec
@@ -254,6 +261,40 @@ renderOnce(section.render, props)
 await tick()
 const third = renderOnce(section.render, props)
 check('onboardingSeen=true 后引导卡消失（只看一次）', !collectClasses(third.tree).includes('ad_guide'))
+
+// ── Onboarding entry (settings.onboarding): the host mounts it in the narrow sidebar column ──
+// This is the regression this suite exists to catch: that slot must carry a card of its own, never the panel.
+summary.health.onboardingSeen = false
+hooks = [] // a different component tree gets its own hook slots
+let openedSection = ''
+let completed = 0
+const stepProps = { ...props, stepId: 'agent-dispatch', openSection: id => { openedSection = id }, complete: () => { completed += 1 } }
+
+const stepLoading = renderOnce(onboarding.render, stepProps)
+check('onboarding 步骤在事实未就绪时渲染 null（不占位、不挡路）', stepLoading.tree === null, JSON.stringify(stepLoading.tree))
+await tick()
+const stepCard = renderOnce(onboarding.render, stepProps)
+const stepText = collectText(stepCard.tree).join(' ')
+check('onboarding 渲染的是自成一体的卡片而非设置面板（ad_ob，不是 ad_root）',
+  stepCard.tree?.props?.className === 'ad_ob' && !collectClasses(stepCard.tree).includes('ad_root'), String(stepCard.tree?.props?.className))
+check('onboarding 卡片带标题与四步要点（复用字典，不另写一份文案）',
+  stepText.includes(dictionaries.zh.obTitle) && ['guideS1', 'guideS2', 'guideS3', 'guideS4'].every(key => stepText.includes(dictionaries.zh[key])))
+const stepButtons = findAll(stepCard.tree, node => node.type === 'button' && typeof node.props?.onClick === 'function')
+check('onboarding 卡片给出「打开设置」与「暂时不用」两个出口', stepButtons.length === 2, `buttons=${stepButtons.length}`)
+stepButtons[0]?.props?.onClick()
+await tick()
+check('「打开设置」把引导权交回宿主并跳到设置分区', openedSection === 'agent-dispatch' && completed === 1, `openSection=${openedSection} completed=${completed}`)
+stepButtons[1]?.props?.onClick()
+await tick()
+check('「暂时不用」调 POST /config 记下「已看过」（重载后也不再冒出来）',
+  fetched.some(item => item.url === `${API_PREFIX}/config` && item.method === 'POST'), JSON.stringify(fetched.slice(-2)))
+
+hooks = []
+summary.health.onboardingSeen = true // the "read" flag now comes back from the host fact
+renderOnce(onboarding.render, stepProps)
+await tick()
+const stepSeen = renderOnce(onboarding.render, stepProps)
+check('onboardingSeen=true 后侧栏卡片不再渲染', stepSeen.tree === null, JSON.stringify(stepSeen.tree))
 
 // ── Summary ─────────────────────────────────────────────────────────────────────
 fs.rmSync(home, { recursive: true, force: true })

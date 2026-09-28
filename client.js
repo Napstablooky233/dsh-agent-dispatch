@@ -9,6 +9,9 @@
  *   4. How many at once, and how long a job must be to warrant dispatching;
  *   5. First-time users: a four-step onboarding guide + a "host adaptation" self-check explaining why each feature is or isn't present.
  *
+ * `settings.onboarding` is a separate, compact card rather than the panel: the host mounts that slot in the
+ * narrow sidebar column, and the panel's layout is built for the wide settings modal.
+ *
  * Data flows only through the plugin's own same-origin HTTP routes `/api/agent-dispatch/*` — in the same process as the Host half,
  * needing no extra binding or handshake.
  *
@@ -103,6 +106,10 @@ window.__ModuleLoader__.load({
         footer: '配置文件：{path}',
         version: '版本',
         enabledPill: '总开关',
+        obTitle: '帮手调度台：先配一次',
+        obLead: '决定「主 agent 要不要派活、派给谁」。四步配完即生效，随时可关。',
+        obOpen: '打开设置去配',
+        obDone: '暂时不用',
         guideTitle: '第一次用：四步就好',
         guideLead: '这个插件只做一件事——把「主 agent 要不要派活、派给谁」写成每一步都生效的策略。四步配完即可用，随时可关。',
         guideS1: '勾通道：只勾你真会用的派活方式，没勾的通道会被明确禁止（比「建议不派」硬）。',
@@ -203,6 +210,10 @@ window.__ModuleLoader__.load({
         footer: 'Config file: {path}',
         version: 'version',
         enabledPill: 'Master',
+        obTitle: 'Agent dispatch: one setup pass',
+        obLead: 'Decides whether other agents help and which ones may — four steps, effective from the next step, switchable any time.',
+        obOpen: 'Open settings',
+        obDone: 'Not now',
         guideTitle: 'First run: four steps',
         guideLead: 'This plugin does one thing — it renders "should the main agent delegate, and to whom" into a policy that is live on every step. Configure it in four steps; switch it off any time.',
         guideS1: 'Pick channels: only the ones you will really use. Unchecked channels are explicitly forbidden, not merely discouraged.',
@@ -245,15 +256,18 @@ window.__ModuleLoader__.load({
 .ad_dot.ok{background:var(--dsw-alias-state-success-primary)}
 .ad_dot.off{background:var(--dsw-alias-state-error-primary)}
 .ad_sec{display:flex;flex-direction:column;gap:10px}
-.ad_sechead{display:flex;align-items:baseline;gap:10px;padding-bottom:6px;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.ad_sechead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding-bottom:6px;border-bottom:1px solid var(--dsw-alias-border-l1)}
 .ad_sechead h3{margin:0;font-size:13.5px;font-weight:650}
-.ad_sechint{margin-left:auto;font-size:11.5px;color:var(--dsw-alias-label-tertiary);text-align:right}
+.ad_sechint{margin-left:auto;flex:1 1 160px;font-size:11.5px;color:var(--dsw-alias-label-tertiary);text-align:right}
 .ad_card{padding:13px 14px;border-radius:13px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);display:flex;flex-direction:column;gap:12px}
-.ad_row{display:flex;align-items:center;gap:12px}
+.ad_row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .ad_rowmain{display:flex;flex-direction:column;gap:2px;min-width:0}
 .ad_label{font-size:12.5px;font-weight:600}
 .ad_sub{font-size:11.5px;color:var(--dsw-alias-label-tertiary);line-height:1.5}
 .ad_grow{flex:1;min-width:0}
+/* A hint that shares a row with a fixed-width control: give it a real wrap basis so a narrow
+   container moves it onto its own line instead of squeezing it to one character per line. */
+.ad_sub.ad_grow{flex:1 1 200px}
 .ad_switch{display:inline-flex;align-items:center;gap:9px;cursor:pointer;border:0;background:transparent;padding:0;font:inherit;color:inherit}
 .ad_switch i{width:34px;height:20px;border-radius:999px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);position:relative;transition:background .16s ease,border-color .16s ease;flex:none}
 .ad_switch i::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-label-secondary);transition:transform .16s ease,background .16s ease}
@@ -315,6 +329,17 @@ window.__ModuleLoader__.load({
 .ad_kv{display:flex;gap:8px;flex-wrap:wrap}
 .ad_foot{font-size:11px;color:var(--dsw-alias-label-tertiary);word-break:break-all}
 .ad_off{opacity:.5}
+/* Onboarding card: the host mounts settings.onboarding in the narrow sidebar column, so this one
+   carries its own chrome and its own layout — it never inherits the panel's grid. */
+.ad_ob{display:flex;flex-direction:column;gap:10px;max-width:100%;padding:13px 14px;border-radius:13px;border:1px solid var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 8%,var(--dsw-alias-bg-layer-3));font-size:12.5px;line-height:1.55;color:var(--dsw-alias-label-primary);box-sizing:border-box}
+.ad_ob *{box-sizing:border-box}
+.ad_obhead{display:flex;align-items:center;gap:8px}
+.ad_obdot{flex:none;width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-state-business-primary)}
+.ad_obtitle{margin:0;font-size:13px;font-weight:650}
+.ad_oblead{margin:0;color:var(--dsw-alias-label-secondary);font-size:11.5px;line-height:1.55}
+.ad_obsteps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ad_obsteps li{display:flex;align-items:flex-start;gap:8px;font-size:11.5px;color:var(--dsw-alias-label-secondary)}
+.ad_obact{display:flex;gap:8px;flex-wrap:wrap;padding-top:2px}
 `
 
     // ── HTTP ─────────────────────────────────────────────────────────────────
@@ -708,6 +733,49 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'ad_root' }, header, guide, master, channels, roster, scale, actions, preview, adapt, foot)
     }
 
+    // ── Onboarding card (settings.onboarding) ────────────────────────────────────────────
+    /**
+     * The host mounts `settings.onboarding` inside the sidebar's settings area — a narrow column —
+     * and expects the step to own its own visible chrome: render null while private facts are still
+     * loading, then either show its card or hand ownership back through `complete()`.
+     * So this is a compact card of its own, never the settings panel (that one is laid out for the
+     * wide settings modal and collapses when it is squeezed into a column this narrow).
+     */
+    function OnboardingCard({ t, complete, openSection, explicit }) {
+      const [seen, setSeen] = useState(null) // null = facts not loaded yet, so show nothing
+
+      useEffect(() => {
+        let alive = true
+        api('/summary')
+          .then(payload => { if (alive) setSeen(payload?.health?.onboardingSeen === true) })
+          .catch(() => { if (alive) setSeen(false) })
+        return () => { alive = false }
+      }, [])
+
+      /** Hand the step back: optionally persist "read" so it stays gone after a reload. */
+      const dismiss = useCallback(markSeen => {
+        setSeen(true)
+        if (markSeen === true) api('/config', { method: 'POST', body: JSON.stringify({ patch: { onboarding: { seen: true } } }) }).catch(() => {})
+        if (typeof complete === 'function') complete()
+      }, [complete])
+
+      // Explicitly requested onboarding ignores the "already read" flag; otherwise wait for the fact.
+      if (explicit !== true && seen !== false) return null
+
+      return h('div', { className: 'ad_ob' },
+        h('div', { className: 'ad_obhead' }, h('span', { className: 'ad_obdot' }), h('h4', { className: 'ad_obtitle' }, t('obTitle'))),
+        h('p', { className: 'ad_oblead' }, t('obLead')),
+        h('ol', { className: 'ad_obsteps' }, ['guideS1', 'guideS2', 'guideS3', 'guideS4'].map((key, index) =>
+          h('li', { key: key }, h('span', { className: 'ad_stepnum' }, String(index + 1)), h('span', null, t(key))))),
+        h('div', { className: 'ad_obact' },
+          h('button', {
+            type: 'button',
+            className: 'ad_btn primary',
+            onClick: () => { if (typeof openSection === 'function') openSection('agent-dispatch'); dismiss(false) },
+          }, t('obOpen')),
+          h('button', { type: 'button', className: 'ad_btn', onClick: () => dismiss(true) }, t('obDone'))))
+    }
+
     // ── Registration ─────────────────────────────────────────────────────────────────
     function apply(ctx) {
       const t = ctx.locale.bind(NS)
@@ -736,7 +804,7 @@ window.__ModuleLoader__.load({
         order: -40,
         label: () => t('nav'),
         locale: NS,
-      }, props => h(Panel, { ...props, t })))
+      }, props => h(OnboardingCard, { ...props, t })))
     }
 
     exports.apply = apply
