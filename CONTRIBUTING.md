@@ -1,11 +1,12 @@
-# 贡献指南 · Contributing
+# Contributing
 
-> 本文件是**提交信息、分支与文档**的统一约定。所有术语以 [docs/GLOSSARY.md](docs/GLOSSARY.md) 为准。
-> English version: [Contributing in English](#contributing-in-english).
+Unified conventions for commit messages, branches, and documentation in this repository. Terminology is governed by [`docs/GLOSSARY.md`](docs/GLOSSARY.md).
 
-## 提交信息规范
+The plugin is pure JavaScript with ESM modules, has no build step and no runtime dependencies, and requires Node `^22.19.0 || >=24.0.0`. Its behaviour lives in two halves: the host half in `index.js` and the browser half in `client.js`.
 
-格式：
+## Commit messages
+
+The format is:
 
 ```
 <type>(<scope>): <subject>
@@ -13,81 +14,97 @@
 <body>
 ```
 
-`type` 只取下面这些，不新增：
+`type` takes one of the values below and nothing else.
 
-| type | 用于 |
+| type | Use for |
 | --- | --- |
-| `feat` | 新功能 |
-| `fix` | 修 bug |
-| `docs` | 只改文档 |
-| `test` | 只改自测/冒烟脚本 |
-| `refactor` | 不改行为的重构 |
-| `perf` | 性能 |
-| `build` | 构建、依赖、打包 |
-| `ci` | CI 配置 |
-| `chore` | 杂项（仓库地址、元数据、格式） |
-| `revert` | 回滚 |
+| `feat` | New behaviour |
+| `fix` | Bug fix |
+| `docs` | Documentation only |
+| `test` | Self-test and smoke scripts only |
+| `refactor` | Rewrite with no behaviour change |
+| `perf` | Performance |
+| `build` | Build, dependencies, packaging |
+| `ci` | CI configuration |
+| `chore` | Repository metadata, formatting, odds and ends |
+| `revert` | Revert |
 
-- **scope 可省略**。本仓库常用：`host`（`index.js`）、`client`（`client.js`）、`i18n`、`config`、`scripts`、`docs`、`market`。
-- **subject** 一句话说清「做了什么」，动词开头（中文用「加 / 修 / 换 / 补 / 删」这类动词），≤ 50 个字符，**结尾不加句号**。
-- **提交信息里不写账号名、ID、邮箱**。这条是硬规矩：作者信息由 git 的 author 字段承载，在提交信息里再写一遍是噪音。
-- **body** 解释「为什么」，不是「做了什么」；每行 ≤ 72 字符；多条用 `-` 列表。可以不写 body。
-- **破坏性变更**：type 后加 `!`（`feat(host)!: ...`），或在 body 里写 `BREAKING CHANGE:` 起头的一段。
-- **语言**：subject 用中文或英文都行，但一个仓库里保持一致——本仓库用「英文 type 前缀 + 中文 subject」。
-- 例子：
+`scope` is optional. In use in this repository: `host` for `index.js`, `client` for `client.js`, `i18n`, `config`, `scripts`, `docs`, `market`, `release`.
+
+- The subject states what the commit does. It is imperative and lowercase, at most 50 characters, with no trailing period.
+- The body explains why, not what. Wrap it at 72 columns. Use a `-` list for several points. The body may be omitted.
+- Breaking changes carry `!` after the type (`feat(host)!: ...`), or a `BREAKING CHANGE:` paragraph at the start of the body.
+- Never put an account name, an ID, or an email address in a commit message. Git's author field already carries it.
+
+Example:
 
 ```
-fix(config): 修掉 /reset 的合并语义
+fix(config): repair merge semantics of /reset
 
-/reset 之前走 sanitize(DEFAULT, current)，用户手填的帮手键会残留。
-改为 sanitize(DEFAULT, DEFAULT)，变成真替换。
+/reset ran sanitize(DEFAULT, current), so helper keys typed by the user
+survived the reset. Use sanitize(DEFAULT, DEFAULT) to make it a real
+replacement.
 ```
 
-## 分支与提交流程
+## Branches and pull requests
 
-1. 从 `main` 切分支，命名 `<type>/<短主题>`：`docs/glossary`、`fix/reset-merge`。
-2. 改完必须 `npm run verify` 全绿才能提交。
-3. 一个提交只做一件事；无关的格式化不要混进同一个提交。
-4. 开 PR 时：标题用提交信息的格式，描述里写清「为什么改」与「怎么验的」。
-5. 维护者本人只对文档类小改直接推 `main`；其余一律走 PR。
+- Branch off `main`. Name the branch `<type>/<short-topic>`, for example `docs/glossary` or `fix/reset-merge`.
+- Run `npm run verify` before you commit. It must be green.
+- One commit carries one concern. Unrelated formatting goes into its own commit.
+- A pull request title uses the commit format. Its description says why the change is needed and how it was verified.
+- A maintainer may push documentation typo fixes straight to `main`. Everything else goes through a pull request.
 
-## 文档约定
+## Repository conventions
 
-- 术语以 [docs/GLOSSARY.md](docs/GLOSSARY.md) 为唯一口径；**新概念先加进术语表，再写进文档**。
-- 双语 README 是**镜像**：`README.md`（中文）与 `README.en.md`（English）——改一份必须在**同一个提交**里同步另一份。
-- 顶部语言切换条不要动：中文页是 `zh-on.svg` + `en-off.svg`，英文页是 `en-on.svg` + `zh-off.svg`（图片都在 `docs/assets/lang/`）。
-- 中英混排：中文与英文、数字之间加一个半角空格；中文用全角标点，英文用半角标点。
-- 代码标识符（`provider:model`、`systemPrompt`、`$DSH_HOME`、`npm run verify`）一律加反引号并保持原样。
-- 能用表格就不用长段落；示意图放 `docs/assets/`。
+- `README.md` is the English primary. `README.zh-CN.md` is the Chinese mirror. Change one, change the other, in the same commit.
+- The language bar at the top of both README files is fixed. Do not alter it. The badge images live in `docs/assets/lang/`.
+- [`docs/GLOSSARY.md`](docs/GLOSSARY.md) is the single source of terminology. Add a new term there before you use it anywhere.
+- Run `npm run links` after you touch any Markdown. It checks that every relative link and image target resolves.
+- Keep host-half changes inside `index.js` and browser-half changes inside `client.js`.
+- The plugin degrades gracefully. A missing host service removes one feature, not the panel. Do not remove that fallback.
+- No emoji in any file.
+- Prefer a table over a long paragraph. Diagrams belong in `docs/assets/`.
 
-## 界面文案（i18n）
+## i18n conventions
 
-- 文案写在 `client.js` 的 `DICT` 对象里，`zh` 与 `en` **必须同键**——`npm run i18n` 会查「字典同键」与「代码里 `t()` 引用的键都在字典里」。
-- 新增 key 用「区块.用途」式命名：`mode.ask`、`srcPeer`、`adaptLlmHint`。
-- 改完文案必须跑 `npm run i18n` 与 `npm run smoke:client`：前者查键，后者真渲染面板（`node --check` 抓不到「一开就是空白」这类崩法）。
+- Every UI string lives in the `DICT` object inside `client.js`.
+- The `zh` and `en` branches must always have exactly the same keys.
+- Name a new key `section.purpose`, for example `mode.ask`, `srcPeer`, `adaptLlmHint`.
+- After editing, run `npm run i18n` and then `npm run smoke:client`. The first checks the keys, the second renders the panel. `node --check` cannot catch a panel that renders blank.
 
-## 自测清单
+## Self-test checklist
 
-```powershell
+```
 npm run verify
 ```
 
-等价于 `check`（两半身语法）→ `i18n`（字典）→ `links`（Markdown 相对链接与图片）→ `test`（纯函数自检）→ `smoke`（宿主半身冒烟）→ `smoke:client`（浏览器半身冒烟）。**任何一项红都不算完成。**
+Six checks run in order: `check` (syntax of both halves) → `i18n` (dictionary) → `links` (relative Markdown links and images) → `test` (pure function self-test) → `smoke` (host half) → `smoke:client` (browser half). A red check means the work is not finished.
 
-## 报告问题
+## Releases
 
-- 用 GitHub Issues：标题一句话说清现象，正文附上 DSH 版本、插件版本（`package.json` 的 `version`）、`$DSH_HOME/agent-dispatch/config.json` 里相关的那几行，以及面板截图。
-- 面板空白或功能不见了：先看面板底部的**宿主适配自检**，它已经写明缺的是哪个服务。
+- A release is one commit titled `chore(release): vX.Y.Z`.
+- That commit bumps `version` in `package.json` and adds the matching [`CHANGELOG.md`](CHANGELOG.md) entry. Nothing else goes into it.
 
-## Contributing in English
+## Reporting issues
 
-Short version of the rules above:
+Open an issue on GitHub. The title states the symptom in one sentence. The body includes:
 
-- Commits follow Conventional Commits — `<type>(<scope>): <subject>`. Allowed types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `revert`.
-- **Never put an account name, ID or email inside a commit message.** The author field already carries it.
-- One commit does one thing. Run `npm run verify` before opening a PR; all five checks must pass.
-- Branch names look like `docs/glossary` or `fix/reset-merge`.
-- Terminology is governed by [docs/GLOSSARY.md](docs/GLOSSARY.md) — add a term there before using it in docs.
-- `README.md` (Chinese) and `README.en.md` (English) are mirrors: update both in the same commit, and leave the language switcher at the top alone.
-- UI strings live in the `DICT` object in `client.js`; `zh` and `en` must share the same keys, enforced by `npm run i18n`.
-- Issues: include your DSH version, the plugin version, the relevant lines of `$DSH_HOME/agent-dispatch/config.json`, and check the host adaptation panel at the bottom of the settings section first.
+- The DSH version.
+- The plugin version from `version` in `package.json`.
+- The host adaptation self-check block at the bottom of the panel. It already names the service that is missing.
+- A screenshot of the panel, plus the relevant lines of `$DSH_HOME/agent-dispatch/config.json`.
+
+## 中文速查
+
+- 提交信息格式 `<type>(<scope>): <subject>`。type 只取 `feat` `fix` `docs` `test` `refactor` `perf` `build` `ci` `chore` `revert`。
+- scope 可省略；本仓库常用 `host`（`index.js`）、`client`（`client.js`）、`i18n`、`config`、`scripts`、`docs`、`market`、`release`。
+- subject 动词开头、小写、≤50 字符、结尾不加句号；body 写「为什么」，每行 ≤72 字符。破坏性变更加 `!` 或写 `BREAKING CHANGE:`。
+- 提交信息里绝不写账号名、ID、邮箱——作者信息由 git author 承载。
+- 分支 `<type>/<短主题>`，如 `docs/glossary`、`fix/reset-merge`。提交前 `npm run verify` 必须全绿；一个提交只做一件事。文档错字维护者可直接推 `main`。
+- 术语唯一口径是 [docs/GLOSSARY.md](docs/GLOSSARY.md)，新概念先入表再进文档。
+- `README.md`（英文）与 `README.zh-CN.md`（中文）互为镜像，改一份就在同一提交里改另一份；顶部语言切换条不要动。
+- 改过任何 Markdown 就跑 `npm run links`；全文不用 emoji。
+- 界面文案写在 `client.js` 的 `DICT` 对象里，`zh` 与 `en` 必须同键；改完跑 `npm run i18n` 与 `npm run smoke:client`。
+- `npm run verify` = `check` → `i18n` → `links` → `test` → `smoke` → `smoke:client`，任一项红都不算完成。
+- 发版是一个提交 `chore(release): vX.Y.Z`，同时改 `package.json` 的 `version` 与 [CHANGELOG.md](CHANGELOG.md) 条目。
+- 报 issue 附：DSH 版本、插件版本、面板底部的宿主适配自检块。
