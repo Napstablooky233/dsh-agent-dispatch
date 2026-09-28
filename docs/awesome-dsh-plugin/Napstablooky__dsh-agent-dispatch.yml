@@ -1,0 +1,6 @@
+url: https://github.com/Napstablooky/dsh-agent-dispatch
+name: Napstablooky/dsh-agent-dispatch
+category: workflow
+description:
+  en: A settings panel that decides whether the main agent may delegate work and which helper agents may join, injecting that division of labour into the system prompt on every step.
+  zh: 一块设置面板，决定主 agent 要不要派活、准哪几个帮手上场，并把这条分工策略注入每一步的系统提示词。
