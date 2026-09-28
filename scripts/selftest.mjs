@@ -1,7 +1,7 @@
 /**
- * dsh-agent-dispatch 单元自测（宿主半身）。
- * 不用测试框架：自己写 assert，输出 TAP-like ok/not ok，末尾汇总。
- * 跑法：node D:\dsh-agent-dispatch\scripts\selftest.mjs
+ * dsh-agent-dispatch unit self-test (host half).
+ * No test framework: writes its own assert, outputs TAP-like ok/not ok, with a summary at the end.
+ * Run: node D:\dsh-agent-dispatch\scripts\selftest.mjs
  */
 
 import { __test } from '../index.js'
@@ -153,11 +153,11 @@ function eq(name, actual, expected, detail = '') {
 
 // ===== buildRoster =====
 {
-  // 创建临时目录
+  // Create a temporary directory
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-roster-test-'))
   
   try {
-    // 写假的兄弟插件状态文件
+    // Write fake sibling plugin state files
     const peerDir = path.join(tmp, 'fake-lane')
     fs.mkdirSync(peerDir, { recursive: true })
     
@@ -176,7 +176,7 @@ function eq(name, actual, expected, detail = '') {
     
     fs.writeFileSync(path.join(peerDir, 'settings.json'), JSON.stringify({ enabled: true }), 'utf8')
     
-    // 假的 llmModels
+    // Fake llmModels
     const fakeLlmModels = [
       { provider: 'llm-provider', id: 'llm-model-1', name: 'LLM Model 1' },
       { provider: 'llm-provider', id: 'llm-model-2', name: 'LLM Model 2' },
@@ -202,11 +202,11 @@ function eq(name, actual, expected, detail = '') {
       llmError: ''
     })
     
-    // 断言：三层合并，同一条 provider:model 被 llm 来源标成 verified
+    // Assert: three sources merged, the same provider:model is marked verified by the llm source
     const nemotronRow = roster.rows.find(r => r.key === 'our-free-model:nemotron-3-ultra-free')
     assert('buildRoster llm verified marks nemotron', nemotronRow?.verified === true)
     
-    // 断言：availability 来源带上 state 与 ttftMs
+    // Assert: availability source carries state and ttftMs
     const modelA = roster.rows.find(r => r.key === 'fake-lane:model-a')
     assert('buildRoster peer model-a has state available', modelA?.state === 'available')
     assert('buildRoster peer model-a has ttftMs', modelA?.ttftMs === 1200)
@@ -218,13 +218,13 @@ function eq(name, actual, expected, detail = '') {
     const modelC = roster.rows.find(r => r.key === 'fake-lane:model-c')
     assert('buildRoster peer model-c unknown', modelC?.state === 'unknown')
     
-    // 断言：sources 计数正确
+    // Assert: sources counts are correct
     assert('buildRoster sources.llm > 0', roster.sources.llm > 0)
     assert('buildRoster sources.peer > 0', roster.sources.peer > 0)
     assert('buildRoster sources.seed > 0', roster.sources.seed > 0)
     assert('buildRoster sources.manual > 0', roster.sources.manual > 0)
     
-    // 断言：返回 rows 排序稳定（可用的、快的在前）
+    // Assert: returned rows are stably sorted (available and fast ones first)
     const availableRows = roster.rows.filter(r => r.state === 'available')
     let sorted = true
     for (let i = 1; i < availableRows.length; i++) {
@@ -235,23 +235,23 @@ function eq(name, actual, expected, detail = '') {
     }
     assert('buildRoster available rows sorted by ttftMs asc', sorted)
     
-    // 断言：peers 摘要正确
+    // Assert: peers summary is correct
     assert('buildRoster peers array length', roster.peers.length === 1)
     assert('buildRoster peer name', roster.peers[0]?.name === 'fake-lane')
     assert('buildRoster peer models count', roster.peers[0]?.models === 3)
     assert('buildRoster peer enabled', roster.peers[0]?.enabled === true)
     
-    // 断言：llmError 被透出
+    // Assert: llmError is exposed
     assert('buildRoster llmError field exists', 'llmError' in roster)
     eq('buildRoster llmError empty', roster.llmError, '')
     
   } finally {
-    // 清理临时目录
+    // Clean up the temporary directory
     fs.rmSync(tmp, { recursive: true, force: true })
   }
 }
 
-// 测试 buildRoster with llmError
+// Test buildRoster with llmError
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-roster-test-'))
   try {
@@ -300,7 +300,7 @@ function eq(name, actual, expected, detail = '') {
   assert('renderPolicy mode=ask shows 询问', askText.includes('询问'))
   assert('renderPolicy armed only lists checked', askText.includes('p1:m1'))
   assert('renderPolicy unarmed not listed', !askText.includes('p2:m2'))
-  // 勾了但状态不好的行：会带警示 + 调用形参那句「别用」
+  // Rows that are checked but in a bad state: get a warning + the "don't use" callout
   const blockedConfig = { ...askConfig, helpers: { 'p1:m1': { enabled: true }, 'p2:m2': { enabled: true }, 'p3:m3': { enabled: true } } }
   const blockedText = renderPolicy(blockedConfig, fakeRoster)
   assert('renderPolicy 勾了但地区受限的行会带警示', blockedText.includes('p2:m2') && blockedText.includes('地区受限'))

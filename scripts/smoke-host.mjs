@@ -1,14 +1,15 @@
 /**
- * 宿主半身冒烟测试 —— 真的 apply() 一次，走假的 webServer / systemPrompt / llm 服务，
- * 再用假的 req/res 打真实的自建 HTTP 路由。
+ * Host half smoke test — really calls apply() once, with fake webServer / systemPrompt / llm services,
+ * then uses fake req/res to hit the real self-built HTTP routes.
  *
- * 为什么要这一层：单元自测（scripts/selftest.mjs）只能证明纯函数对不对，
- * 证明不了「装上以后面板真的能用」——服务缺席时的降级、路由注册、策略随配置实时变化，
- * 都要在真实 apply 流程里跑一遍才算数。这是**不重启 DSH** 的前提下最接近真机的验证。
+ * Why this layer: unit self-tests (scripts/selftest.mjs) can only prove whether pure functions are correct,
+ * but cannot prove "the panel actually works after install" — service-absent degradation, route registration,
+ * policy changing live with config — all need to run through a real apply flow to count.
+ * This is the closest-to-real-machine verification possible without restarting DSH.
  *
- * 安全：整个过程把 DSH_HOME 指向临时目录，绝不碰用户真实的 $DSH_HOME/agent-dispatch/config.json。
+ * Safety: the entire process points DSH_HOME at a temporary directory, never touching the user's real $DSH_HOME/agent-dispatch/config.json.
  *
- * 跑法：node scripts/smoke-host.mjs
+ * Run: node scripts/smoke-host.mjs
  */
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
@@ -25,7 +26,7 @@ function check(name, ok, detail = '') {
   console.log(`${ok === true ? 'ok  ' : 'FAIL'} - ${name}${ok === true || detail === '' ? '' : ` — ${detail}`}`)
 }
 
-// ── 假宿主 ────────────────────────────────────────────────────────────────────
+// ── Fake host ────────────────────────────────────────────────────────────────────
 const routes = []
 const sections = []
 const disposers = []
@@ -80,7 +81,7 @@ const ctx = {
   },
 }
 
-/** 一次假的 HTTP 往返：handler 是插件注册进假 webServer 的那个。 */
+/** One fake HTTP round-trip: the handler is the one the plugin registered into the fake webServer. */
 function call(method, route, options = {}) {
   const handler = routes[0]?.handler
   if (typeof handler !== 'function') throw new Error('插件没有注册路由处理器')
@@ -111,7 +112,7 @@ function call(method, route, options = {}) {
 
 const json = response => { try { return JSON.parse(response.body) } catch { return undefined } }
 
-// ── 跑 ───────────────────────────────────────────────────────────────────────
+// ── Run ───────────────────────────────────────────────────────────────────────
 const plugin = await import(new URL('../index.js', import.meta.url))
 check('index.js 导出 name / inject / apply', plugin.name === 'agent-dispatch' && Array.isArray(plugin.inject) && typeof plugin.apply === 'function', `name=${plugin.name}`)
 

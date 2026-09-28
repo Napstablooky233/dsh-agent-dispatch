@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 /**
- * 相对链接与图片检查：扫描仓库内所有 Markdown，确认每个相对路径目标真实存在。
- * 外链（http/https/mailto）与纯锚点（#...）跳过；锚点/查询串只取路径部分再查。
- * 用途：双语 README 的顶部语言切换条引用仓库自带 SVG，路径写错时静默显示破图——这一层专门抓它。
+ * Relative link and image check: scans all Markdown files in the repo,
+ * verifying each relative path target actually exists.
+ * External links (http/https/mailto) and pure anchors (#...) are skipped;
+ * anchor/query string takes only the path portion before checking.
+ * Purpose: the top language-switcher bar in the bilingual README references
+ * repo-bundled SVGs; a wrong path silently shows a broken image—this layer catches that.
  */
 import fs from 'node:fs';
 import path from 'node:path';

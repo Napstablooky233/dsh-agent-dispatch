@@ -1,19 +1,19 @@
 /**
- * dsh-agent-dispatch —— 帮手调度台（浏览器半身）。
+ * dsh-agent-dispatch —— Agent Dispatch (browser half).
  *
- * 贡献一个设置分区（`settings.section` id `agent-dispatch`）：在这一个页面上决定
- *   1. 要不要让别的 agent 帮忙（总开关 + 关闭/询问/自动 三态）；
- *   2. 从哪条通道派人（workflow 扇出 / 子代理单派 / Agency 专家 / Agent Teams）；
- *   3. 准哪几个帮手模型上场——名册来自三层来源（宿主 llm 实枚举 / 兄弟插件
- *      实测状态文件 / 内置参考 + 手填的任意 provider:model），不依赖任何插件；
- *   4. 一次最多派几个、多长的任务才值得派；
- *   5. 第一次用的人：顶部四步引导 + 「宿主适配」自检，解释每个功能为什么在或不在。
+ * Contributes a settings section (`settings.section` id `agent-dispatch`): on this one page, decide
+ *   1. Whether to let other agents help (master switch + off/ask/auto tri-state);
+ *   2. Which channel to dispatch through (workflow fan-out / subagent single dispatch / Agency experts / Agent Teams);
+ *   3. Which helper models may be used — the roster comes from three sources (host llm enumeration / sibling plugin
+ *      probe state files / built-in reference + any manually-entered provider:model), with no dependency on any other plugin;
+ *   4. How many at once, and how long a job must be to warrant dispatching;
+ *   5. First-time users: a four-step onboarding guide + a "host adaptation" self-check explaining why each feature is or isn't present.
  *
- * 数据只走插件自己的同源 HTTP 路由 `/api/agent-dispatch/*`——与 Host 半身在
- * 同一个进程里，不需要任何额外的绑定或握手。
+ * Data flows only through the plugin's own same-origin HTTP routes `/api/agent-dispatch/*` — in the same process as the Host half,
+ * needing no extra binding or handshake.
  *
- * 手写 ModuleLoader 包：无构建步骤，除 shell 自带的 `react` 外无依赖；
- * 颜色全部取自主题变量，换配色方案不破相。
+ * Hand-written ModuleLoader bundle: no build step, no dependencies beyond the shell's built-in `react`;
+ * all colors come from theme variables, so switching the color scheme won't break anything.
  */
 window.__ModuleLoader__.load({
   id: 'dsh-agent-dispatch',
@@ -27,7 +27,7 @@ window.__ModuleLoader__.load({
     const API = '/api/agent-dispatch'
     const inject = ['slots', 'locale']
 
-    // ── 文案（zh / en 必须同键） ───────────────────────────────────────────────
+    // ── Copy (zh / en must share the same keys) ───────────────────────────────────────────────
     const DICT = {
       zh: {
         nav: '帮手调度',
@@ -231,7 +231,7 @@ window.__ModuleLoader__.load({
       },
     }
 
-    // ── 样式（全部走主题变量） ────────────────────────────────────────────────
+    // ── Styles (all from theme variables) ────────────────────────────────────────────────
     const CSS = `
 .ad_root{display:flex;flex-direction:column;gap:16px;max-width:1080px;font-size:13px;line-height:1.55;color:var(--dsw-alias-label-primary);box-sizing:border-box}
 .ad_root *{box-sizing:border-box}
@@ -330,7 +330,7 @@ window.__ModuleLoader__.load({
       return payload
     }
 
-    // ── 小工具 ────────────────────────────────────────────────────────────────
+    // ── Utilities ────────────────────────────────────────────────────────────────
     function seconds(ms) {
       if (!Number.isFinite(ms) || ms <= 0) return '—'
       return `${(ms / 1000).toFixed(2)}s`
@@ -342,7 +342,7 @@ window.__ModuleLoader__.load({
     function same(a, b) {
       try { return JSON.stringify(a) === JSON.stringify(b) } catch { return true }
     }
-    /** 帮手键 provider:model → 两段（与宿主半身的 splitKey 同规则）。 */
+    /** Helper key provider:model → two segments (same rule as the host half's splitKey). */
     function splitKey(key) {
       const text = String(key ?? '')
       const at = text.indexOf(':')
@@ -351,7 +351,7 @@ window.__ModuleLoader__.load({
     }
     const SOURCE_LABEL = { peer: 'srcPeer', llm: 'srcLlm', manual: 'srcManual', seed: 'srcSeed' }
 
-    /** 一个主题化开关：原生 button，aria-checked 驱动 CSS。 */
+    /** A themed toggle: native button driven by aria-checked for CSS. */
     function Toggle({ checked, onChange, label, disabled }) {
       return h('button', {
         type: 'button',
@@ -363,12 +363,12 @@ window.__ModuleLoader__.load({
       }, h('i', null), label ? h('span', { className: 'ad_label' }, label) : null)
     }
 
-    /** 来源标签：告诉用户这一行是「实测 / 宿主注册 / 手填 / 内置参考」。 */
+    /** Source tag: tells the user this row is from "lane probe / host-registered / manual / built-in reference". */
     function SourceTag({ row, t }) {
       return h('span', { className: 'ad_src', title: row.source === 'seed' ? t('srcSeedHint') : '' }, t(SOURCE_LABEL[row.source] ?? 'srcSeed'))
     }
 
-    // ── 面板 ─────────────────────────────────────────────────────────────────
+    // ── Panel ─────────────────────────────────────────────────────────────────
     function Panel(props) {
       const t = props.t
       const [data, setData] = useState(undefined)
@@ -430,7 +430,7 @@ window.__ModuleLoader__.load({
         } finally { setBusy('') }
       }, [flash])
 
-      /** 引导卡片上的「知道了」：把 draft 与 seen 一起落盘，不丢用户的未保存改动。 */
+      /** The "Got it" button on the onboarding card: saves draft and seen together without losing the user's unsaved changes. */
       const finishGuide = useCallback(async () => {
         setBusy('guide')
         try {
@@ -465,7 +465,7 @@ window.__ModuleLoader__.load({
       const health = data.health ?? { services: {}, roster: { sources: {} }, peers: [], llm: { providers: [] } }
       const rows = data.roster?.rows ?? []
       const knownKeys = new Set(rows.map(row => row.key))
-      // 手填但还没落盘/还不在名册里的条目：先按行渲染出来，用户看得见自己刚加的东西。
+      // Manually-added entries not yet saved / not in the roster yet: render them as rows first so the user can see what they just added.
       const extras = Object.entries(draft.helpers ?? {})
         .filter(([key, value]) => value?.enabled === true && !knownKeys.has(key))
         .map(([key]) => {
@@ -490,7 +490,7 @@ window.__ModuleLoader__.load({
           h('span', { className: 'ad_pill' }, `${t('statChannels')} `, h('b', null, String(data.stats.channels))),
           h('span', { className: 'ad_pill' }, `${t('statConcurrency')} `, h('b', null, String(draft.maxHelpers)))))
 
-      // 0) 首次引导（onboarding）——看过一次就不再出现
+      // 0) First-run onboarding — shown once, then gone
       const guide = health.onboardingSeen === true ? null : h('div', { className: 'ad_card ad_guide' },
         h('div', { className: 'ad_row' },
           h('h3', { className: 'ad_h1', style: { fontSize: '14px' } }, t('guideTitle')),
@@ -505,7 +505,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', className: 'ad_btn', disabled: busy === 'rescan', onClick: () => { void rescan() } },
             busy === 'rescan' ? t('rescanning') : t('guideRescan'))))
 
-      // 1) 总开关 + 模式
+      // 1) Master switch + mode
       const master = h('div', { className: 'ad_sec' },
         h('div', { className: 'ad_row' },
           h(Toggle, { checked: draft.enabled !== false, onChange: value => patch({ enabled: value, ...(value && draft.mode === 'off' ? { mode: 'ask' } : {}) }), label: t('master') }),
@@ -520,7 +520,7 @@ window.__ModuleLoader__.load({
           }, t(`mode.${mode}`)))),
           h('span', { className: 'ad_grow ad_sub' }, t(`modeHint.${draft.enabled === false ? 'off' : draft.mode}`))))
 
-      // 2) 通道
+      // 2) Channels
       const channels = h('div', { className: 'ad_sec' },
         h('div', { className: 'ad_sechead' }, h('h3', null, t('channels')), h('span', { className: 'ad_sechint' }, t('channelsHint'))),
         h('div', { className: `ad_card ${off ? '' : 'ad_off'}` },
@@ -534,7 +534,7 @@ window.__ModuleLoader__.load({
               h('span', { className: 'ad_label' }, channel.label),
               h('span', { className: 'ad_sub' }, channel.hint)))))))
 
-      // 3) 名册 + 手填
+      // 3) Roster + manual add
       const roster = h('div', { className: 'ad_sec' },
         h('div', { className: 'ad_sechead' },
           h('h3', null, t('roster')),
@@ -638,7 +638,7 @@ window.__ModuleLoader__.load({
           h('datalist', { id: 'ad_providers' }, (data.providers ?? []).map(provider => h('option', { key: provider.id, value: provider.id }))),
           h('span', { className: 'ad_sub' }, t('addHint'))))
 
-      // 4) 规模 + 备注
+      // 4) Scale + notes
       const scale = h('div', { className: 'ad_sec' },
         h('div', { className: 'ad_sechead' }, h('h3', null, t('scale'))),
         h('div', { className: `ad_card ${off ? '' : 'ad_off'}` },
@@ -665,7 +665,7 @@ window.__ModuleLoader__.load({
               onChange: event => patch({ notes: event.target.value }),
             }))))
 
-      // 5) 动作 + 预览
+      // 5) Actions + preview
       const actions = h('div', { className: 'ad_actions' },
         h('button', { type: 'button', className: 'ad_btn primary', disabled: busy === 'save', onClick: () => { void save() } },
           busy === 'save' ? t('saving') : t('save')),
@@ -678,7 +678,7 @@ window.__ModuleLoader__.load({
         h('p', { className: 'ad_sub' }, t('previewHint'), dirty ? ` ${t('unsaved')}` : ''),
         h('pre', { className: 'ad_pre' }, data.preview))
 
-      // 6) 宿主适配自检：解释「哪个功能为什么在 / 不在」
+      // 6) Host adaptation self-check: explains "which features are or aren't present and why"
       const svc = health.services ?? {}
       const svcRow = (label, ok) => h('span', { key: label, className: 'ad_pill' },
         h('i', { className: `ad_dot ${ok ? 'ok' : 'off'}` }), `${label}: `, h('b', null, ok ? t('svcOk') : t('svcNo')))
@@ -708,7 +708,7 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'ad_root' }, header, guide, master, channels, roster, scale, actions, preview, adapt, foot)
     }
 
-    // ── 注册 ─────────────────────────────────────────────────────────────────
+    // ── Registration ─────────────────────────────────────────────────────────────────
     function apply(ctx) {
       const t = ctx.locale.bind(NS)
       ctx.effect(() => ctx.locale.register(NS, { zh: DICT.zh, en: DICT.en }), 'agent-dispatch: dictionaries')
@@ -729,7 +729,7 @@ window.__ModuleLoader__.load({
         locale: NS,
       }, props => h(Panel, { ...props, t })))
 
-      // 首次使用引导卡片：宿主提供 settings.onboarding 插槽时才出现（缺席只少一张卡）。
+      // Onboarding card for first-time users: only appears when the host provides the settings.onboarding slot (its absence just means one fewer card).
       ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
         name: 'settings.onboarding',
         id: 'agent-dispatch',
