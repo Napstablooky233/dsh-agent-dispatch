@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-09-28
+
+### Fixed
+
+- **The onboarding step no longer renders the settings panel.** The host mounts `settings.onboarding` inside the sidebar's settings column (~250px wide), where the panel — laid out as flex rows for the wide settings modal — collapsed: the 「派活模式」 label overlapped its segmented control, and the hint text was squeezed to one character per line and overflowed the card. That slot now contributes a compact card of its own (`.ad_ob`) with two exits — 「打开设置去配」 (`openSection('agent-dispatch')`) and 「暂时不用」 (persists `onboarding.seen`) — renders nothing while its fact is still loading, and honours `explicit` for an explicitly requested run.
+
+### Changed
+
+- Panel rows wrap rather than overlap in a narrow container: `.ad_row` and `.ad_sechead` wrap, and a hint sharing its row with a fixed-width control (`.ad_sub.ad_grow`) gets a 200px wrap basis, so it moves onto its own line instead of collapsing to one character per line.
+
 ## [0.2.2] - 2026-09-28
 
 ### Added
