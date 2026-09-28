@@ -48,11 +48,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Napstablooky/dsh-agent-dispatch.git"
+    "url": "git+https://github.com/Napstablooky233/dsh-agent-dispatch.git"
   },
-  "homepage": "https://github.com/Napstablooky/dsh-agent-dispatch#readme",
+  "homepage": "https://github.com/Napstablooky233/dsh-agent-dispatch#readme",
   "bugs": {
-    "url": "https://github.com/Napstablooky/dsh-agent-dispatch/issues"
+    "url": "https://github.com/Napstablooky233/dsh-agent-dispatch/issues"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
