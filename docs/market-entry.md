@@ -12,19 +12,19 @@ data/plugins/<owner>__<repo>.yml
 
 本插件对应的文件名与内容都已经写好了，直接复制：
 
-- 文件：`docs/awesome-dsh-plugin/Napstablooky__dsh-agent-dispatch.yml`
+- 文件：`docs/awesome-dsh-plugin/Napstablooky233__dsh-agent-dispatch.yml`
 - 内容：
 
 ```yaml
-url: https://github.com/Napstablooky/dsh-agent-dispatch
-name: Napstablooky/dsh-agent-dispatch
+url: https://github.com/Napstablooky233/dsh-agent-dispatch
+name: Napstablooky233/dsh-agent-dispatch
 category: workflow
 description:
   en: A settings panel that decides whether the main agent may delegate work and which helper agents may join, injecting that division of labour into the system prompt on every step.
   zh: 一块设置面板，决定主 agent 要不要派活、准哪几个帮手上场，并把这条分工策略注入每一步的系统提示词。
 ```
 
-目标路径：`awesome-dsh-plugin/awesome-dsh-plugin` 仓库里的 `data/plugins/Napstablooky__dsh-agent-dispatch.yml`。
+目标路径：`awesome-dsh-plugin/awesome-dsh-plugin` 仓库里的 `data/plugins/Napstablooky233__dsh-agent-dispatch.yml`。
 
 ## 二、硬性要求（缺一不可）
 

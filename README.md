@@ -150,4 +150,4 @@ node scripts/smoke-client.mjs            # 桩 React + 真 /summary 数据，把
 
 ## 许可
 
-MIT。仓库：[github.com/Napstablooky/dsh-agent-dispatch](https://github.com/Napstablooky/dsh-agent-dispatch)。
+MIT。仓库：[github.com/Napstablooky233/dsh-agent-dispatch](https://github.com/Napstablooky233/dsh-agent-dispatch)。

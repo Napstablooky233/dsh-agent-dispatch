@@ -150,4 +150,4 @@ node scripts/smoke-client.mjs            # stub React + the real /summary payloa
 
 ## License
 
-MIT. Repository: [github.com/Napstablooky/dsh-agent-dispatch](https://github.com/Napstablooky/dsh-agent-dispatch).
+MIT. Repository: [github.com/Napstablooky233/dsh-agent-dispatch](https://github.com/Napstablooky233/dsh-agent-dispatch).

@@ -7,7 +7,7 @@
 ## 已完成的本地部分
 
 - `git init` + 首次提交（见 `git log`）。
-- 上架条目写好：`docs/awesome-dsh-plugin/Napstablooky__dsh-agent-dispatch.yml`。
+- 上架条目写好：`docs/awesome-dsh-plugin/Napstablooky233__dsh-agent-dispatch.yml`。
 - 安装脚本、自检、冒烟、i18n 检查全绿。
 
 ## 需要你授权才能做的部分
@@ -16,7 +16,7 @@
 
 ```powershell
 # 仓库还不存在时，先在 GitHub 网页建一个空仓库（不要勾 README/.gitignore），然后：
-git -C D:\dsh-agent-dispatch remote add origin https://github.com/Napstablooky/dsh-agent-dispatch.git
+git -C D:\dsh-agent-dispatch remote add origin https://github.com/Napstablooky233/dsh-agent-dispatch.git
 git -C D:\dsh-agent-dispatch push -u origin main
 ```
 
@@ -29,7 +29,7 @@ git -C D:\dsh-agent-dispatch push -u origin main
 
 ```powershell
 $h = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'User-Agent' = 'dsh-agent-dispatch' }
-Invoke-RestMethod -Method Put -Uri 'https://api.github.com/repos/Napstablooky/dsh-agent-dispatch/topics' -Headers $h -ContentType 'application/json' -Body '{"names":["dsh-plugin","dsh"]}'
+Invoke-RestMethod -Method Put -Uri 'https://api.github.com/repos/Napstablooky233/dsh-agent-dispatch/topics' -Headers $h -ContentType 'application/json' -Body '{"names":["dsh-plugin","dsh"]}'
 ```
 
 ### 第 3 步：向 awesome-dsh-plugin 提 PR
@@ -39,10 +39,10 @@ Invoke-RestMethod -Method Put -Uri 'https://api.github.com/repos/Napstablooky/ds
 git clone https://github.com/<你的用户名>/awesome-dsh-plugin
 cd awesome-dsh-plugin
 git checkout -b add-dsh-agent-dispatch
-# 把本仓库的 docs/awesome-dsh-plugin/Napstablooky__dsh-agent-dispatch.yml
-# 复制到本仓库的 data/plugins/Napstablooky__dsh-agent-dispatch.yml
-git add data/plugins/Napstablooky__dsh-agent-dispatch.yml
-git commit -m "Add Napstablooky/dsh-agent-dispatch"
+# 把本仓库的 docs/awesome-dsh-plugin/Napstablooky233__dsh-agent-dispatch.yml
+# 复制到本仓库的 data/plugins/Napstablooky233__dsh-agent-dispatch.yml
+git add data/plugins/Napstablooky233__dsh-agent-dispatch.yml
+git commit -m "Add Napstablooky233/dsh-agent-dispatch"
 git push -u origin add-dsh-agent-dispatch
 ```
 
@@ -70,5 +70,5 @@ npm publish        # 包名 dsh-agent-dispatch 当前为空
 出现条目后，用户即可在 dsh-market 里一键安装，或直接：
 
 ```powershell
-dsh plugin --profile web add Napstablooky/dsh-agent-dispatch
+dsh plugin --profile web add Napstablooky233/dsh-agent-dispatch
 ```

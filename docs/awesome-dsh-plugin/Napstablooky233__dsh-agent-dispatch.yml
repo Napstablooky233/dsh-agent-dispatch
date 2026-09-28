@@ -1,5 +1,5 @@
-url: https://github.com/Napstablooky/dsh-agent-dispatch
-name: Napstablooky/dsh-agent-dispatch
+url: https://github.com/Napstablooky233/dsh-agent-dispatch
+name: Napstablooky233/dsh-agent-dispatch
 category: workflow
 description:
   en: A settings panel that decides whether the main agent may delegate work and which helper agents may join, injecting that division of labour into the system prompt on every step.
