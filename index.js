@@ -1,27 +1,27 @@
 /**
- * dsh-agent-dispatch —— 帮手调度台（Host 半身）。
+ * dsh-agent-dispatch — helper dispatch (host half).
  *
- * 一句话：让「主 agent 要不要别的 agent 帮忙、准哪几个帮手上场」变成一件
- * 面板上看得见、点得动的事，并且**真的生效**——策略以 systemPrompt 段的
- * 形式注入每一步，主 agent 据此决定派不派活。
+ * In one line: turn "may the main agent hand work to other agents, and which ones" into
+ * something visible and clickable in a panel — and it really takes effect: the policy is injected
+ * into every step as a systemPrompt section, and the main agent decides from it whether to dispatch.
  *
- * 四件事：
- *   1. 一份落盘配置（$DSH_HOME/agent-dispatch/config.json）：总开关、模式
- *      （关闭 / 询问 / 自动）、允许的帮手通道、勾选的帮手模型、同时最多几个。
- *   2. 帮手名册（本版重点：**不依赖任何其他插件**）。三层来源合并——
- *      a) `ctx.llm` 实枚举：宿主当前真的注册了哪些 provider / model；
- *      b) 兄弟插件状态文件：$DSH_HOME/<任意插件目录>/{catalog,availability}.json
- *         （不写死名字，扫到就用，能拿到实测首字延迟）；
- *      c) 内置参考名册 + 面板手填的 provider(model) 组合。
- *      三个来源都缺席也不会空手：面板照常可用，手填一条就能派活。
- *   3. 首次使用引导（onboarding）：面板顶部的四步引导 + `settings.onboarding`
- *      插槽卡片，`onboarding.seen` 落盘，看过就不再打扰。
- *   4. systemPrompt 段 `agent-dispatch:policy`：把上面几件事渲染成中文策略，
- *      含具体调用方式与省 token 的口径；关闭时注入「不派活」的明确指令。
+ * Four jobs:
+ *   1. A persisted config ($DSH_HOME/agent-dispatch/config.json): master switch, mode
+ *      (off / ask / auto), allowed helper channels, checked helper models, concurrency cap.
+ *   2. The helper roster (the point of this version: it depends on no other plugin). Three sources merged:
+ *      a) real `ctx.llm` enumeration: which providers / models the host has actually registered;
+ *      b) sibling plugin state files: $DSH_HOME/<any plugin dir>/{catalog,availability}.json
+ *         (no plugin name is hard-coded; whatever is found is used, together with its measured TTFT);
+ *      c) the built-in reference roster plus the provider:model pairs typed into the panel.
+ *      With all three sources absent nothing is lost: the panel still works and one manual entry is enough to dispatch.
+ *   3. First-run onboarding: a four-step guide at the top of the panel plus a `settings.onboarding`
+ *      slot card; `onboarding.seen` is persisted, so it stops once it has been read.
+ *   4. The systemPrompt section `agent-dispatch:policy`: renders the above into the Chinese policy text,
+ *      with concrete call shapes and the token-saving rationale; when off it injects an explicit "do not dispatch".
  *
- * 服务只通过 `ctx` 取，且只用 `ctx.inject` 的嵌套 fiber 去等 webServer /
- * systemPrompt / llm——某个服务缺席只会少一个功能，不会让插件整个挂起（这是
- * 本仓库里已经踩过的坑：在 inject 里点名一个不存在的服务 = fiber 永久 pending）。
+ * Services come only from `ctx`, and only through nested `ctx.inject` fibers waiting for webServer /
+ * systemPrompt / llm: a missing service only removes one feature, it never leaves the plugin hanging
+ * (a trap this repository has already hit: naming an absent service in `inject` = a permanently pending fiber).
  *
  * @module index.js
  */
@@ -30,29 +30,29 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-/** 稳定 Cordis 插件名（与 cordis.patch.yml 的 id 对应）。 */
+/** Stable Cordis plugin name (matches the id in cordis.patch.yml). */
 export const name = 'agent-dispatch'
 
-/** 插件自身不硬依赖任何服务：逐个用嵌套 fiber 机会式获取。 */
+/** The plugin hard-depends on no service: each one is acquired opportunistically in a nested fiber. */
 export const inject = []
 
-/** 状态目录名（落在 $DSH_HOME 下，与 DSH 用户数据同域）。 */
+/** State directory name (under $DSH_HOME, alongside the rest of the DSH user data). */
 const DATA_DIR_NAME = 'agent-dispatch'
-/** 配置文件名。 */
+/** Config file name. */
 const CONFIG_FILE = 'config.json'
-/** HTTP API 前缀（浏览器半身读它）。 */
+/** HTTP API prefix (the browser half reads it). */
 const API_PREFIX = '/api/agent-dispatch'
-/** 默认 provider：只是「内置参考名册」挂在谁名下，不要求这台机器上真的有它。 */
+/** Default provider: it only says whose account the built-in reference roster hangs under; the model need not exist here. */
 const DEFAULT_PEER = 'our-free-model'
-/** 配置结构版本；v1（0.1.0）的 helper 键没有 provider 前缀，加载时自动迁移。 */
+/** Config schema version; v1 (0.1.0) helper keys carry no provider prefix and are migrated on load. */
 const CONFIG_VERSION = 2
-/** 名册缓存时长：面板连续打开不会每次都去问 llm 服务。 */
+/** Roster cache window: opening the panel repeatedly does not query the llm service every time. */
 const ROSTER_TTL_MS = 20_000
 
-/** 允许的帮手通道 id（顺序即面板顺序）。 */
+/** Allowed helper channel ids (this order is the panel order). */
 const CHANNEL_IDS = ['workflow', 'subagent', 'experts', 'teams']
 
-/** 通道说明（注入文本与面板共用同一份口径）。 */
+/** Channel descriptions (the injected text and the panel share this single wording). */
 const CHANNELS = [
   {
     id: 'workflow',
@@ -81,12 +81,12 @@ const CHANNELS = [
 ]
 
 /**
- * 内置**参考**名册。
+ * The built-in **reference** roster.
  *
- * 只做两件事：面板第一次打开时不是空的；同伴插件与 llm 枚举都拿不到东西时，
- * 还能提示「这台机器上常见的免费帮手长什么样」。**它不是事实来源**——
- * 面板会给每一行标来源，`verified` 表示宿主 llm 服务确实注册了这个模型。
- * 延迟数据是 2026-09-28 在本机出口实测的一次快照，一律标注「参考」。
+ * It does two things: keeps the panel non-empty on first open, and — when sibling plugins and
+ * llm enumeration yield nothing — hints at what a common free helper on this machine looks like. **It is not a source of truth**:
+ * every row is labelled with its source, and `verified` means the host llm service really registered that model.
+ * The latency figures are one snapshot measured from this machine on 2026-09-28 and are always labelled "reference".
  */
 const SEED_ROWS = [
   { provider: 'our-free-model', model: 'nemotron-3.5-lightning-free', state: 'available', ttftMs: 1150 },
@@ -102,7 +102,7 @@ const SEED_ROWS = [
   { provider: 'our-free-model', model: 'jev-1.13-free', state: 'unknown', ttftMs: 0 },
 ]
 
-/** 出厂默认：开、询问模式、两条通道、勾选实测可用的免费模型、并发上限 4。 */
+/** Factory default: on, ask mode, two channels, the measured-available free models checked, cap 4. */
 const DEFAULT_CONFIG = {
   version: CONFIG_VERSION,
   enabled: true,
@@ -133,9 +133,9 @@ export function apply(ctx, config) {
   const configPath = path.join(dataDir, CONFIG_FILE)
   try { fs.mkdirSync(dataDir, { recursive: true }) } catch { /* 只读环境：内存配置照常工作 */ }
 
-  /** 服务连接状态（面板「宿主适配」区显示，用来解释功能为什么没出现）。 */
+  /** Service connection state (shown in the panel host-adaptation block to explain why a feature is absent). */
   const services = { webServer: false, systemPrompt: false, llm: false }
-  /** llm 服务实枚举结果（失败时记下原因，面板照实显示）。 */
+  /** Result of the llm enumeration (on failure the reason is kept and shown as-is). */
   let llmCatalog = { providers: [], models: [], error: '', at: 0 }
   let llmService = undefined
 
@@ -143,7 +143,7 @@ export function apply(ctx, config) {
   let roster = buildRoster({ home, config: current, llmModels: llmCatalog.models, llmError: llmCatalog.error })
   let rosterAt = Date.now()
 
-  // ── 落盘 ────────────────────────────────────────────────────────────────────
+  // ── Persistence ────────────────────────────────────────────────────────────────────
   function persist() {
     try {
       const tmp = `${configPath}.tmp`
@@ -157,7 +157,7 @@ export function apply(ctx, config) {
     }
   }
 
-  /** 重新取名册：llm 服务在就先刷新一遍，再合并三个来源。 */
+  /** Rebuild the roster: refresh from llm when present, then merge the three sources. */
   async function rescan() {
     await refreshLlm()
     roster = buildRoster({ home, config: current, llmModels: llmCatalog.models, llmError: llmCatalog.error })
@@ -189,7 +189,7 @@ export function apply(ctx, config) {
     }
   }
 
-  /** 注入文本：唯一的事实来源，面板预览与 systemPrompt 用的是同一个函数。 */
+  /** Injected text: the single source of truth; the panel preview and the systemPrompt use this same function. */
   const policyText = () => renderPolicy(current, roster)
 
   const health = () => ({
@@ -226,7 +226,7 @@ export function apply(ctx, config) {
     meta: { pluginVersion: PACKAGE_VERSION, configVersion: CONFIG_VERSION, peer: DEFAULT_PEER },
   })
 
-  // ── 浏览器面 HTTP API ───────────────────────────────────────────────────────
+  // ── Browser-facing HTTP API ───────────────────────────────────────────────────────
   const handler = async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const route = url.pathname.slice(API_PREFIX.length).replace(/\/+$/, '') || '/'
@@ -257,7 +257,7 @@ export function apply(ctx, config) {
         return send(200, summary())
       }
       if (method === 'POST' && route === '/reset') {
-        // 恢复默认 = 真替换，不是合并：用户手填、多加的帮手键也必须一起清掉。
+        // Reset means real replacement, not a merge: manually typed or extra helper keys are cleared too.
         current = sanitizeConfig(structuredClone(DEFAULT_CONFIG), structuredClone(DEFAULT_CONFIG))
         const writeError = persist()
         await rescan()
@@ -270,7 +270,7 @@ export function apply(ctx, config) {
   }
 
   if (typeof ctx.inject === 'function') {
-    // 幂等：可能被重跑（服务被替换时 cordis 会再次进入）。
+    // Idempotent: it may run again (cordis re-enters when a service is replaced).
     let mounted = false
     ctx.inject(['webServer'], scoped => {
       if (mounted) return
@@ -281,7 +281,7 @@ export function apply(ctx, config) {
       logger.info?.(`agent-dispatch: 面板 API 挂在 ${API_PREFIX}`)
     })
 
-    // systemPrompt 段：每一步都按当前配置实时渲染，开关一改立即生效。
+    // systemPrompt section: rendered from the current config on every step, so a toggle takes effect at once.
     ctx.inject(['systemPrompt'], scoped => {
       services.systemPrompt = true
       scoped.effect(() => scoped.systemPrompt.section({
@@ -292,7 +292,7 @@ export function apply(ctx, config) {
       logger.info?.(`agent-dispatch: 策略已注入（${current.enabled === false ? '关闭' : current.mode}·${summary().stats.armed} 个帮手）`)
     })
 
-    // llm 服务：只为「宿主到底有哪些 provider/model」这一件事而接（可选）。
+    // llm service: wired only to learn which provider/model the host has (optional).
     ctx.inject(['llm'], scoped => {
       services.llm = true
       llmService = scoped.llm
@@ -300,7 +300,7 @@ export function apply(ctx, config) {
       void rescan()
     })
   } else {
-    // 没有嵌套 fiber 的极简组合：直接尝试挂（失败只丢功能）。
+    // Minimal composition without a nested fiber: try to attach directly (a failure only drops one feature).
     try {
       const promptService = ctx.get?.('systemPrompt')
       promptService?.section?.({ name: 'agent-dispatch:policy', order: 180, text: policyText })
@@ -315,17 +315,17 @@ export function apply(ctx, config) {
   ctx.effect?.(() => () => { /* 无外部资源需要释放；配置已即时落盘 */ }, 'agent-dispatch: dispose')
 }
 
-// ── 策略文本 ─────────────────────────────────────────────────────────────────
+// ── Policy text ─────────────────────────────────────────────────────────────────
 
 /**
- * 把配置 + 名册渲染成注入给主 agent 的策略段。
+ * Renders config + roster into the policy section injected to the main agent.
  *
- * 口径（刻意写死，避免模型自由发挥）：
- *   - 关闭 = 明确禁止派活，而不是「可以但没勾」；
- *   - 帮手清单只列**已勾选**的模型，并标注它是宿主实注册、车道实测还是未核验的参考；
- *   - 派活规则写清「什么该派、什么必须自己干」，因为省 token 的前提是把
- *     自包含的活挪出去，而不是把关键决策挪出去；
- *   - 帮手是材料不是结论：收到后主 agent 自己核对再交付。
+ * The wording is deliberate, so the model cannot improvise:
+ *   - off means an explicit ban on dispatching, not "allowed but unchecked";
+ *   - the helper list carries **checked** models only, each labelled host-registered, lane-verified or unverified reference;
+ *   - the dispatch rules spell out what may be handed out and what must stay here, because saving tokens
+ *     means moving self-contained work out, not moving the key decisions out;
+ *   - helper output is material, not a conclusion: the main agent verifies it before delivering.
  */
 function renderPolicy(config, roster) {
   const mode = config.enabled === false ? 'off' : config.mode
@@ -397,7 +397,7 @@ function renderPolicy(config, roster) {
   return lines.join('\n')
 }
 
-/** primary 必须落在已勾选的名册里；否则退回第一个可用的。 */
+/** primary must be a checked roster entry; otherwise it falls back to the first available one. */
 function pickPrimary(config, armed, usable) {
   if (config.primary && armed.some(row => row.key === config.primary)) return config.primary
   return usable[0]?.key ?? armed[0]?.key ?? ''
@@ -413,16 +413,16 @@ function stateLabel(state) {
   }
 }
 
-// ── 名册 ─────────────────────────────────────────────────────────────────────
+// ── Roster ─────────────────────────────────────────────────────────────────────
 
 /**
- * 合并三层来源，产出统一名册。**纯函数**：只吃 home + 配置 + llm 枚举结果，
- * 因此可以在测试里直接喂假数据（scripts/selftest.mjs 就是这么做的）。
+ * Merges the three sources into one roster. **Pure function**: it only takes home + config + llm enumeration,
+ * so tests can feed it fake data directly (which is what scripts/selftest.mjs does).
  *
- * 合并优先级（同一条 provider:model 被多个来源提到时）：
- *   llm 枚举 → 判定 verified=true（宿主真的注册了）；
- *   兄弟插件 availability.json → 判定 state / ttftMs（唯一能给出实测延迟的来源）；
- *   内置参考名册 → 只补「长什么样」，不覆盖上面两者的判定。
+ * Merge priority when several sources mention the same provider:model:
+ *   llm enumeration → sets verified=true (the host really registered it);
+ *   sibling plugin availability.json → sets state / ttftMs (the only source of measured latency);
+ *   built-in reference roster → fills in appearance only, never overriding the two verdicts above.
  */
 function buildRoster({ home, config, llmModels = [], llmError = '' }) {
   const map = new Map()
@@ -462,14 +462,14 @@ function buildRoster({ home, config, llmModels = [], llmError = '' }) {
     }
   }
 
-  // ① 内置参考名册（永远在，保证面板不空）
+  // 1. Built-in reference roster (always present, so the panel is never empty)
   for (const seed of SEED_ROWS) {
     const provider = seed.provider || config.peer || DEFAULT_PEER
     merge(make(provider, seed.model, { ...seed, provider, source: 'seed' }))
     sources.seed += 1
   }
 
-  // ② 兄弟插件状态文件：目录名即 provider 名，不写死任何插件名
+  // 2. Sibling plugin state files: the directory name is the provider name, no plugin is hard-coded
   if (config.discover?.siblings !== false) {
     for (const dir of listPeerDirs(home)) {
       const catalog = readJson(path.join(dir.path, 'catalog.json'))
@@ -504,7 +504,7 @@ function buildRoster({ home, config, llmModels = [], llmError = '' }) {
     }
   }
 
-  // ③ 宿主 llm 服务实枚举：唯一能证明「这个 provider/model 现在真的能调」的来源
+  // 3. Host llm enumeration: the only proof that this provider/model can be invoked right now
   for (const model of Array.isArray(llmModels) ? llmModels : []) {
     const provider = String(model?.provider ?? '').trim()
     const id = String(model?.id ?? '').trim()
@@ -513,7 +513,7 @@ function buildRoster({ home, config, llmModels = [], llmError = '' }) {
     sources.llm += 1
   }
 
-  // ④ 面板/配置文件里手写的条目：允许用户填任何 provider:model（哪怕是别的付费车道）
+  // 4. Manual entries from the panel/config file: any provider:model is allowed, even another paid lane
   for (const [key, value] of Object.entries(config.helpers ?? {})) {
     const parsed = splitKey(key, config.peer)
     if (parsed.provider === '' || parsed.model === '') continue
@@ -541,7 +541,7 @@ function buildRoster({ home, config, llmModels = [], llmError = '' }) {
   }
 }
 
-/** 面板上那一行「来源」小标签：实测 > 宿主实注册 > 手填 > 内置参考。 */
+/** The source tag on each panel row: lane probe > host-registered > manual > built-in. */
 function displaySource(row) {
   if (row.ttftMs > 0 || row.found.includes('peer')) return 'peer'
   if (row.verified === true || row.found.includes('llm')) return 'llm'
@@ -555,7 +555,7 @@ function countSources(rows) {
   return out
 }
 
-/** provider 视图：面板的「宿主里有什么」下拉用。 */
+/** Provider view: used by the panel dropdown of what the host has. */
 function providerList(roster, llmCatalog) {
   const known = new Map()
   for (const id of llmCatalog?.providers ?? []) known.set(id, { id, registered: true, models: 0, measured: 0 })
@@ -569,7 +569,7 @@ function providerList(roster, llmCatalog) {
   return [...known.values()].sort((a, b) => Number(b.registered) - Number(a.registered) || a.id.localeCompare(b.id))
 }
 
-/** 扫 $DSH_HOME 下「看起来像模型车道」的兄弟插件目录（有 catalog 或 availability 即算）。 */
+/** Scans $DSH_HOME for sibling plugin directories that look like a model lane (a catalog or availability file). */
 function listPeerDirs(home) {
   const out = []
   try {
@@ -583,7 +583,7 @@ function listPeerDirs(home) {
   return out
 }
 
-/** 可用的排前面：先按状态，同状态按首字延迟快慢。 */
+/** Available first: by state, then by measured TTFT within the same state. */
 function speedRank(row) {
   return row.state === 'available' ? row.ttftMs || Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER
 }
@@ -592,7 +592,7 @@ function rankOf(state) {
   return { available: 0, unknown: 1, throttled: 2, 'region-blocked': 3, unavailable: 4 }[state] ?? 5
 }
 
-/** 帮手键 → {provider, model}。老配置里没有 provider 前缀的键，按默认 provider 解释。 */
+/** Helper key → {provider, model}. Keys without a provider prefix are read as the default provider. */
 function splitKey(key, fallbackProvider = DEFAULT_PEER) {
   const text = String(key ?? '')
   const at = text.indexOf(':')
@@ -600,13 +600,13 @@ function splitKey(key, fallbackProvider = DEFAULT_PEER) {
   return { provider: text.slice(0, at), model: text.slice(at + 1) }
 }
 
-/** 模型 id → 面板上顺眼的名字（去尾巴、首字母大写，仅用于显示）。 */
+/** Model id → a display name for the panel (trim the suffix, capitalize; display only). */
 function prettyName(id) {
   const trimmed = String(id).replace(/-(free|preview|contributor-free)$/i, '').replace(/-free$/i, '')
   return trimmed.split(/[-_/]/).map(part => (part.length <= 3 ? part.toUpperCase() : part.charAt(0).toUpperCase() + part.slice(1))).join(' ')
 }
 
-// ── 配置 ─────────────────────────────────────────────────────────────────────
+// ── Config ─────────────────────────────────────────────────────────────────────
 
 function resolveDshHome() {
   const fromEnv = process.env.DSH_HOME
@@ -614,7 +614,7 @@ function resolveDshHome() {
   return path.join(os.homedir(), '.dsh')
 }
 
-/** 读配置：文件优先，其次 bundle patch 里传的 config，最后出厂默认。 */
+/** Read config: file first, then the config passed by the bundle patch, then the factory default. */
 function loadConfig(configPath, config) {
   const fromFile = readJson(configPath)
   const seed = fromFile ?? (config && typeof config === 'object' ? config : {})
@@ -626,9 +626,9 @@ const PROVIDER_RE = /^[A-Za-z0-9._@-]{1,80}$/
 const MODEL_RE = /^[A-Za-z0-9._:@/-]{1,120}$/
 
 /**
- * 白名单式收敛：面板/手改文件/未来的脚本都只能落在这里认识的字段上。
- * 数值一律夹在合理区间（0 会变成 hot loop 或「一个帮手都不许」的意外语义）。
- * `opts.migrating` 为真时把 v1 的裸模型键补上 provider 前缀（一次性迁移）。
+ * Allowlist convergence: the panel, a hand-edited file or a future script can only land on fields known here.
+ * Numbers are clamped to sane ranges (0 would mean a hot loop or an accidental "no helper allowed").
+ * When `opts.migrating` is true, v1 bare model keys get a provider prefix (one-time migration).
  */
 function sanitizeConfig(patch, current, opts = {}) {
   const next = structuredClone(current ?? DEFAULT_CONFIG)
@@ -676,14 +676,14 @@ function sanitizeConfig(patch, current, opts = {}) {
   if (typeof patch.notes === 'string') next.notes = patch.notes.slice(0, 2000)
   next.version = CONFIG_VERSION
 
-  // 勾选与名册对齐：primary 指向一个没勾选的模型时，注入文本会退回实际勾选的第一个。
+  // Keep checks aligned with the roster: if primary points at an unchecked model, the injected text falls back to the first checked one.
   if (next.helpers[next.primary]?.enabled !== true && Object.values(next.helpers).some(item => item?.enabled === true)) {
     next.primary = Object.entries(next.helpers).find(([, item]) => item?.enabled === true)?.[0] ?? next.primary
   }
   return next
 }
 
-/** 助手键规范化：v1 的裸模型名补 provider 前缀；非法键丢弃。 */
+/** Helper key normalization: v1 bare model names get a provider prefix; illegal keys are dropped. */
 function normalizeHelperKey(rawKey, provider, migrate) {
   const text = String(rawKey ?? '').trim()
   if (HELPER_KEY_RE.test(text)) return text
@@ -697,7 +697,7 @@ function clampInt(value, min, max, fallback) {
   return Math.min(max, Math.max(min, Math.trunc(number)))
 }
 
-// ── 小工具 ───────────────────────────────────────────────────────────────────
+// ── Utilities ───────────────────────────────────────────────────────────────────
 
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return undefined }
@@ -728,10 +728,10 @@ async function readJsonBody(req) {
 }
 
 /**
- * 只服务本机浏览器。
+ * Serves the local browser only.
  *
- * 这条 API 能改插件行为，而同一个进程的 webServer 可能绑定到 0.0.0.0；
- * 面板只可能来自 loopback，所以非 loopback 的 Host 一律 403（安全默认）。
+ * This API can change plugin behaviour and the process webServer may be bound to 0.0.0.0,
+ * so any non-loopback Host gets 403 (the safe default); the panel can only come from loopback.
  */
 function isLoopbackRequest(req) {
   const host = String(req.headers?.host ?? '')
@@ -739,7 +739,7 @@ function isLoopbackRequest(req) {
   return name === '127.0.0.1' || name === 'localhost' || name === '::1' || name === ''
 }
 
-/** 从自身 package.json 读版本（面板页脚显示）。 */
+/** Read the version from this package.json (shown in the panel footer). */
 const PACKAGE_VERSION = (() => {
   try {
     const file = new URL('./package.json', import.meta.url)
@@ -747,7 +747,7 @@ const PACKAGE_VERSION = (() => {
   } catch { return '' }
 })()
 
-/** 供 scripts/selftest.mjs 复用（不参与运行时）。 */
+/** Reused by scripts/selftest.mjs (not part of runtime). */
 export const __test = {
   renderPolicy,
   buildRoster,

@@ -1,14 +1,15 @@
 /**
- * 浏览器半身冒烟测试 —— 没有浏览器、没装 react，也要把 Panel 的渲染体真跑一遍。
+ * Browser half smoke test — no browser, no React installed, yet still runs the Panel's render body for real.
  *
- * 为什么需要这一层：`node --check` 只证明语法能过，`selftest`/`smoke-host` 一个字节都没执行
- * 浏览器半身的那 700 多行。用户看到的恰恰是这一半——它一开就崩，面板就是空白。
- * 这里用桩 React（迷你 hooks 运行时）+ **真实宿主半身 apply() 产出的 /summary** 数据，
- * 按「加载态 → 有数据态 → 引导已看过」渲染三遍，断言渲染树里该有的东西都在。
+ * Why this layer is needed: `node --check` only proves syntax passes, and `selftest`/`smoke-host`
+ * don't execute a single byte of the browser half's 700+ lines. What users see is exactly this half —
+ * if it crashes on start, the panel is blank. Here, stub React (a mini hooks runtime) + the **real**
+ * /summary data produced by the host half's apply() are used to render through three states —
+ * loading → data → guide seen — asserting the rendering tree contains everything it should.
  *
- * 安全：DSH_HOME 指向临时目录，绝不碰真实配置；不写任何文件。
+ * Safety: DSH_HOME points at a temporary directory, never touching the real config; no files written.
  *
- * 跑法：node scripts/smoke-client.mjs
+ * Run: node scripts/smoke-client.mjs
  */
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
@@ -25,7 +26,7 @@ function check(name, ok, detail = '') {
   console.log(`${ok === true ? 'ok  ' : 'FAIL'} - ${name}${ok === true || detail === '' ? '' : ` — ${detail}`}`)
 }
 
-// ── 假宿主半身（与 smoke-host.mjs 同形）：拿到**真实**的 /summary 数据 ────────────
+// ── Fake host half (same shape as smoke-host.mjs): gets the **real** /summary data ───
 const routes = []
 const disposers = []
 const webServer = { register(route) { routes.push(route); return () => {} } }
@@ -80,7 +81,7 @@ host.apply(hostCtx, {})
 const summary = JSON.parse((await call('GET', '/summary')).body)
 check('前置：宿主半身产出真实 /summary（v2 配置 + 名册）', summary?.config?.version === 2 && Array.isArray(summary?.roster?.rows) && typeof summary?.preview === 'string', `rows=${summary?.roster?.rows?.length}`)
 
-// ── 桩 DOM ───────────────────────────────────────────────────────────────────
+// ── Stub DOM ───────────────────────────────────────────────────────────────────
 const styles = []
 globalThis.document = {
   createElement(tag) {
@@ -93,7 +94,7 @@ globalThis.document = {
   head: { appendChild(element) { styles.push(element) } },
 }
 
-// ── 桩 React：迷你 hooks 运行时（够 Panel 用：状态、效果、记忆、引用） ───────────
+// ── Stub React: mini hooks runtime (enough for Panel: state, effects, memo, refs) ───
 let hooks = []
 let hookIndex = 0
 let pendingEffects = []
@@ -121,7 +122,7 @@ const React = {
   useRef(initial) { const index = hookIndex++; if (!(index in hooks)) hooks[index] = { current: initial }; return hooks[index] },
 }
 
-/** 把函数组件真正「实例化」出来——桩运行时也要像 React 那样递归展开组件。 */
+/** Actually "instantiate" functional components — the stub runtime also needs to recursively expand components like React does. */
 function instantiate(node) {
   if (Array.isArray(node)) return node.map(instantiate)
   if (!node || typeof node !== 'object') return node
@@ -130,7 +131,7 @@ function instantiate(node) {
   return { ...node, children: (children ?? []).map(instantiate) }
 }
 
-/** 渲染一遍：重置游标 → 实例化组件树 → 跑这一遍登记的效果。 */
+/** Render once: reset cursor → instantiate component tree → run the effects registered for this pass. */
 function renderOnce(render, props) {
   hookIndex = 0
   pendingEffects = []
@@ -170,7 +171,7 @@ function collectTypes(node, out = []) {
   return out
 }
 
-// ── 加载浏览器半身 ───────────────────────────────────────────────────────────
+// ── Load the browser half ───────────────────────────────────────────────────
 let spec
 globalThis.window = { __ModuleLoader__: { load(candidate) { spec = candidate } } }
 const fetched = []
@@ -222,7 +223,7 @@ const zhKeys = Object.keys(dictionaries?.zh ?? {})
 const enKeys = Object.keys(dictionaries?.en ?? {})
 check('注册 zh/en 字典且键完全相同', zhKeys.length > 60 && zhKeys.length === enKeys.length && zhKeys.every(key => key in (dictionaries?.en ?? {})), `zh=${zhKeys.length} en=${enKeys.length}`)
 
-// ── 渲染三遍 ─────────────────────────────────────────────────────────────────
+// ── Render three passes ─────────────────────────────────────────────────────────
 const props = { t: key => (dictionaries?.zh ?? {})[key] ?? key }
 
 let first
@@ -247,14 +248,14 @@ check('渲染树里出现面板标题与四个通道区块', text.includes(dicti
 check('首次引导卡在 onboardingSeen=false 时出现', classes.includes('ad_guide'))
 check('没有渲染出未定义文案（t() 返回 key 本身说明漏键）', !text.includes('undefined') && !text.includes('NaN'), text.includes('undefined') ? '文本里出现 undefined' : '')
 
-// 第三遍：看过引导之后，引导卡应当消失
+// Third pass: after the guide has been seen, the guide card should disappear
 summary.health.onboardingSeen = true
 renderOnce(section.render, props)
 await tick()
 const third = renderOnce(section.render, props)
 check('onboardingSeen=true 后引导卡消失（只看一次）', !collectClasses(third.tree).includes('ad_guide'))
 
-// ── 汇总 ─────────────────────────────────────────────────────────────────────
+// ── Summary ─────────────────────────────────────────────────────────────────────
 fs.rmSync(home, { recursive: true, force: true })
 const failed = results.filter(item => item.ok !== true)
 console.log(`\n${results.length - failed.length} passed, ${failed.length} failed（浏览器半身冒烟）`)

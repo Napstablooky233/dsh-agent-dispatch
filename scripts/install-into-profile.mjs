@@ -1,13 +1,14 @@
 /**
- * 把 dsh-agent-dispatch 装进 DSH profile（默认只预演，不落盘）。
+ * Install dsh-agent-dispatch into the DSH profile (dry-run by default, no disk write).
  *
- *   node scripts/install-into-profile.mjs           # 预演：打印将要改的内容
- *   node scripts/install-into-profile.mjs --apply   # 真的改（自动备份）
- *   node scripts/install-into-profile.mjs --revert   # 撤回到上一次备份
+ *   node scripts/install-into-profile.mjs           # dry-run: print what will change
+ *   node scripts/install-into-profile.mjs --apply   # actually change (auto-backup)
+ *   node scripts/install-into-profile.mjs --revert   # revert to the previous backup
  *
- * 只动一处文件：`<DSH_HOME>/profiles/<profile>/package.json` 的两行——
- * dependencies 里的 link: 依赖，和 dsh.profile.bundles 里的包名。
- * 改完需要 `pnpm install`（让 link: 生效）并重启 dsh（bundle 列表在启动时读）。
+ * Touches only one file: two lines in `<DSH_HOME>/profiles/<profile>/package.json` —
+ * the link: dependency in dependencies, and the package name in dsh.profile.bundles.
+ * After changing, run `pnpm install` (to make link: effective) and restart dsh
+ * (the bundle list is read at startup).
  */
 
 import fs from 'node:fs'
