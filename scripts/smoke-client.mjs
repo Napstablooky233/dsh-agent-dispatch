@@ -79,7 +79,7 @@ function call(method, route, options = {}) {
 const host = await import(new URL('../index.js', import.meta.url))
 host.apply(hostCtx, {})
 const summary = JSON.parse((await call('GET', '/summary')).body)
-check('前置：宿主半身产出真实 /summary（v2 配置 + 名册）', summary?.config?.version === 2 && Array.isArray(summary?.roster?.rows) && typeof summary?.preview === 'string', `rows=${summary?.roster?.rows?.length}`)
+check('前置：宿主半身产出真实 /summary（v3 配置 + 名册）', summary?.config?.version === 3 && Array.isArray(summary?.roster?.rows) && typeof summary?.preview === 'string', `rows=${summary?.roster?.rows?.length}`)
 
 // ── Stub DOM ───────────────────────────────────────────────────────────────────
 const styles = []
@@ -255,12 +255,39 @@ check('渲染树里出现面板标题与四个通道区块', text.includes(dicti
 check('首次引导卡在 onboardingSeen=false 时出现', classes.includes('ad_guide'))
 check('没有渲染出未定义文案（t() 返回 key 本身说明漏键）', !text.includes('undefined') && !text.includes('NaN'), text.includes('undefined') ? '文本里出现 undefined' : '')
 
+// ── v3 controls: pre-flight estimate + stall failover must render, disabled states included ──
+check('面板渲染出「动工前预估」与「卡住改派」两个新区块', text.includes(dictionaries.zh.plan) && text.includes(dictionaries.zh.planHint) && text.includes(dictionaries.zh.failTitle) && text.includes(dictionaries.zh.failHint))
+const numberInputs = findAll(second.tree, node => node.type === 'input' && node.props?.type === 'number')
+check('数值输入覆盖建队门槛 / 等待步数 / 改派次数（加原有的并发与步数）', numberInputs.length >= 4, `numberInputs=${numberInputs.length}`)
+const selects = findAll(second.tree, node => node.type === 'select')
+check('兜底对象渲染成 select，默认项是「主 agent 自己接手」', selects.length === 1 && String(selects[0].props?.value) === 'main' && String(selects[0].children?.[0]?.children?.[0] ?? '') === dictionaries.zh.failFallbackMain, JSON.stringify(selects[0]?.children?.length))
+check('teams 未勾选时建队开关禁用并给出锁定说明', text.includes(dictionaries.zh.planAutoTeamLocked) && findAll(second.tree, node => node.props?.disabled === true).length >= 2)
+
 // Third pass: after the guide has been seen, the guide card should disappear
 summary.health.onboardingSeen = true
 renderOnce(section.render, props)
 await tick()
 const third = renderOnce(section.render, props)
 check('onboardingSeen=true 后引导卡消失（只看一次）', !collectClasses(third.tree).includes('ad_guide'))
+
+// ── v3 unlocked path: arm Agent Teams and tune the estimate / failover, then re-render ──
+// The panel adopts whatever /summary reports (the effect re-runs on every renderOnce here), so the
+// snapshot is edited in place. `preview` is left exactly as the host rendered it — the panel only
+// prints that string, it never recomputes it.
+summary.config.channels = { ...summary.config.channels, teams: true }
+summary.config.plan = { enabled: true, minBlocks: 4, autoTeam: true }
+summary.config.failover = { enabled: true, waitSteps: 12, maxRetry: 2, fallback: 'our-free-model:nemotron-3-ultra-free' }
+renderOnce(section.render, props)
+await tick()
+const fourth = renderOnce(section.render, props)
+const tunedText = collectText(fourth.tree).join(' ')
+const tunedSelects = findAll(fourth.tree, node => node.type === 'select')
+check('勾上 Agent Teams 后建队开关解锁（锁定说明换成解锁说明）', !tunedText.includes(dictionaries.zh.planAutoTeamLocked) && tunedText.includes(dictionaries.zh.planAutoTeamHint))
+check('面板回显调过的建队门槛 / 等待步数 / 改派次数', (() => {
+  const values = findAll(fourth.tree, node => node.type === 'input' && node.props?.type === 'number').map(node => Number(node.props.value))
+  return values.includes(4) && values.includes(12) && values.includes(2)
+})(), JSON.stringify(findAll(fourth.tree, node => node.type === 'input' && node.props?.type === 'number').map(node => node.props.value)))
+check('兜底下拉的选项来自名册里已勾选的帮手键，并回显当前值', tunedSelects.length === 1 && String(tunedSelects[0].props.value) === 'our-free-model:nemotron-3-ultra-free' && tunedSelects[0].children.some(option => String(option.props?.value ?? '') === 'our-free-model:nemotron-3-ultra-free'), JSON.stringify(tunedSelects[0]?.children?.map(option => option.props?.value)))
 
 // ── Onboarding entry (settings.onboarding): the host mounts it in the narrow sidebar column ──
 // This is the regression this suite exists to catch: that slot must carry a card of its own, never the panel.

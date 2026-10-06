@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-29
+
+### Added
+
+- **Pre-flight estimate** (`plan`, config v3): before starting, the main agent answers one line — can this work be split into blocks that do not depend on each other, can each block be written as a self-contained prompt, and would a mistake be obvious at a glance? All three yes → worth dispatching; otherwise it does the work itself, and never splits a task apart just to be parallel. When the estimate passes and at least `plan.minBlocks` independent blocks fall out, the plugin permits building an Agent Teams team on the spot and turning each block into a task — gated on `channels.teams` **and** `plan.autoTeam`, and in `ask` mode still asking the user once before building.
+- **Stall failover** (`failover`, config v3): a helper that produces nothing for `failover.waitSteps` steps counts as stalled. The agent first asks it one question (long research may simply be quiet), then reassigns that block to another checked helper — preferring lower measured TTFT — up to `failover.maxRetry` times, then hands it to `failover.fallback` (`'main'` = the main agent finishes it, or a named `provider:model`). Handover carries the confirmed constraints and whatever was already produced; an already-dispatched block is never dispatched twice; waiting is never an excuse to idle. With Agent Teams checked the check-and-reassign steps use `agent_teams_status` / `agent_teams_reassign_task`; otherwise `list_agents`, and `interrupt_agent` + `subagent` when the subagent channel is on.
+- **Two new panel sections**: 「动工前预估」 (on/off, minimum independent blocks, may a passing estimate build the team on the spot — the last control locks while `channels.teams` is unchecked) and 「卡住改派」 (on/off, steps without output, reassignments per unit of work, who finishes afterwards — `main` or a named checked helper).
+- **`sanitizeConfig` convergence for both blocks**: `plan.minBlocks` clamped to 2–8, `failover.waitSteps` to 1–50, `failover.maxRetry` to 0–3 (`0` is kept, meaning never retry), `failover.fallback` normalised to `'main'` unless it is a valid checked-style `provider:model` key; unknown sub-keys are dropped and a non-object block falls back to the factory default.
+
+### Changed
+
+- **`CONFIG_VERSION` 2 → 3**: existing v2 files gain both blocks with default values on load, so an upgrade never changes behaviour until the user opens the panel.
+- Switching either behaviour off does not remove the injected text but replaces it with an explicit 「本轮不做」 instruction, so the agent never improvises its own estimate or failover. In `off` mode both blocks disappear together with the rest of the policy.
+- The `teams` channel description no longer claims that an explicit request is the only path: a passing estimate with `plan.autoTeam` on is the second one, and the same hint is rendered in the injected text.
+- Self-test counts in both READMEs corrected to the measured values (self-test 124, host smoke 37, client smoke 34); the previously documented 「71 / 26 / 20」 had drifted.
+
 ## [0.2.3] - 2026-09-28
 
 ### Fixed

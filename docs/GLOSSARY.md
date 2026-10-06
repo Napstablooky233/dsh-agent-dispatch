@@ -46,6 +46,14 @@
 | 收敛 | convergence | Invalid config clamped to safe values |
 | 注入 | inject | Write policy into `systemPrompt` section |
 | 预览 | preview | Panel-expanded **actual** injected text |
+| 动工前预估 | pre-flight estimate | Config block `plan`. One-sentence estimate before every run: can this be split into blocks that do not depend on each other? |
+| 互不依赖 | independent of each other | The property that makes a split worth doing. Do not write "并行" as the criterion — parallelism is the consequence, independence is the test |
+| 值得建队 | worth building a team | Estimate passed **and** at least `plan.minBlocks` independent blocks fell out |
+| 卡住改派 | stall failover | Config block `failover`. Reassign a helper's block after `failover.waitSteps` steps without output |
+| 兜底 | fallback | `failover.fallback`: `'main'` (the main agent finishes it) or a named `provider:model` key |
+| 主 agent 接手 | the main agent takes over | The `'main'` fallback. **Do not write** "兜底模型自己来干" for a specific model — the free lane decides which model answers |
+| 一次没成直接走兜底 | one missed attempt goes straight to the fallback | `failover.maxRetry: 0`, meaning never retry |
+| 已派出去的活绝不重复派 | an already-dispatched block is never dispatched twice | Guard against re-dispatching during a handover |
 
 ### 2.1 Source tags as rendered in the UI
 

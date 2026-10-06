@@ -91,6 +91,26 @@ window.__ModuleLoader__.load({
         minSteps: '任务超过多少步才值得派',
         longTaskOnly: '短任务不许派',
         longTaskOnlyHint: '打开后，一句话能答完的活必须你亲自做。',
+        plan: '动工前预估',
+        planHint: '每次动工前先估一句话：这活能不能拆成几块互不依赖的材料、每块能不能写成自包含 prompt。估出来的结果决定派不派、要不要建队。',
+        planOn: '每次动工前先估一次',
+        planOnHint: '关掉后不再要求预估，直接按派活规则自行判断。',
+        planMinBlocks: '至少几块才建队',
+        planMinBlocksHint: '拆出这么多块互不依赖的活，才值得建队并行（2–8）。',
+        planAutoTeam: '预估通过就直接建队',
+        planAutoTeamHint: '打开后，预估通过就直接建队派活，不必等你当场再说一次；关掉则仍要你明确要求。',
+        planAutoTeamLocked: '要先勾上 Agent Teams 通道才起作用。',
+        failTitle: '卡住改派',
+        failHint: '帮手长时间没有产出时怎么办：先看状态、再改派给别人、最后兜底。这些都写进注入文本，主 agent 会照做。',
+        failOn: '帮手卡住就改派',
+        failOnHint: '关掉后帮手无响应时不许改派，由主 agent 自己接手。',
+        failWait: '多少步没产出算卡住',
+        failWaitHint: '主 agent 推进或等待这么多步后帮手还没有任何产出，就判定卡住（1–50）。',
+        failRetry: '同一个活最多改派几次',
+        failRetryHint: '改派这么多次仍无产出就走兜底；填 0 表示一次不重试（0–3）。',
+        failFallback: '兜底谁来做',
+        failFallbackHint: '改派用尽之后由谁收尾：主 agent 自己接手，或指定一个已勾选的帮手。',
+        failFallbackMain: '主 agent 自己接手',
         notes: '附加要求（会原样写进注入文本）',
         notesPlaceholder: '例如：代码审查的活只能派给 nemotron-3-ultra-free；写文件的活不要派给帮手。',
         save: '保存并生效',
@@ -195,6 +215,26 @@ window.__ModuleLoader__.load({
         minSteps: 'Dispatch only past N steps',
         longTaskOnly: 'Never dispatch quick jobs',
         longTaskOnlyHint: 'One-liner tasks stay with the main agent.',
+        plan: 'Pre-flight estimate',
+        planHint: 'One sentence before starting: can this be split into independent blocks, each with a self-contained prompt? The answer decides whether to dispatch — and whether to build a team.',
+        planOn: 'Estimate before every run',
+        planOnHint: 'Off: no per-run estimate; the dispatch rules decide on their own.',
+        planMinBlocks: 'Blocks needed for a team',
+        planMinBlocksHint: 'This many independent blocks are worth a team (2–8).',
+        planAutoTeam: 'Build the team when the estimate passes',
+        planAutoTeamHint: 'On: a passing estimate creates the team on the spot, without a fresh request; off: it still waits for your explicit word.',
+        planAutoTeamLocked: 'Check the Agent Teams channel first.',
+        failTitle: 'Stall failover',
+        failHint: 'What happens when a helper stops producing: check, reassign, then fall back. Written into the injected policy, so the main agent follows it.',
+        failOn: 'Reassign stalled helpers',
+        failOnHint: 'Off: no reassignment — the main agent takes the work back itself.',
+        failWait: 'Steps without output before stalled',
+        failWaitHint: 'After this many steps of waiting with no output, the helper counts as stalled (1–50).',
+        failRetry: 'Reassignments per unit of work',
+        failRetryHint: 'After this many, it falls back; 0 means never retry (0–3).',
+        failFallback: 'Who finishes it',
+        failFallbackHint: 'Once reassignment runs out: the main agent takes over, or a named checked helper finishes.',
+        failFallbackMain: 'Main agent takes over',
         notes: 'Extra instructions (injected verbatim)',
         notesPlaceholder: 'e.g. code review only to nemotron-3-ultra-free',
         save: 'Save & apply',
@@ -307,6 +347,9 @@ window.__ModuleLoader__.load({
 .ad_input,.ad_area{font:inherit;font-size:12px;padding:6px 9px;border-radius:9px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);min-width:0;width:100%}
 .ad_area{min-height:64px;resize:vertical;line-height:1.6}
 .ad_input:focus,.ad_area:focus{outline:none;border-color:var(--dsw-alias-state-business-primary)}
+.ad_select{font:inherit;font-size:12px;padding:6px 9px;border-radius:9px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);min-width:0;width:100%}
+.ad_select:focus{outline:none;border-color:var(--dsw-alias-state-business-primary)}
+.ad_select:disabled{opacity:.55}
 .ad_actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:2px}
 .ad_btn{font:inherit;font-size:12px;padding:6px 14px;border-radius:9px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);cursor:pointer}
 .ad_btn:hover:not(:disabled){border-color:var(--dsw-alias-state-business-primary)}
@@ -690,7 +733,65 @@ window.__ModuleLoader__.load({
               onChange: event => patch({ notes: event.target.value }),
             }))))
 
-      // 5) Actions + preview
+      // 5) Pre-flight estimate: whether to spend a sentence deciding before any work starts
+      const planCfg = draft.plan ?? { enabled: true, minBlocks: 2, autoTeam: true }
+      const teamsArmed = draft.channels?.teams === true
+      const planSec = h('div', { className: 'ad_sec' },
+        h('div', { className: 'ad_sechead' }, h('h3', null, t('plan')), h('span', { className: 'ad_sechint' }, t('planHint'))),
+        h('div', { className: `ad_card ${off ? '' : 'ad_off'}` },
+          h('div', { className: 'ad_row' },
+            h(Toggle, { checked: planCfg.enabled !== false, disabled: !off, onChange: value => patchNested('plan', 'enabled', value), label: t('planOn') }),
+            h('span', { className: 'ad_grow ad_sub' }, t('planOnHint'))),
+          h('div', { className: 'ad_grid' },
+            h('label', { className: 'ad_field' },
+              h('span', null, t('planMinBlocks')),
+              h('input', {
+                type: 'number', min: 2, max: 8, className: 'ad_input', value: planCfg.minBlocks, disabled: !off,
+                onChange: event => patchNested('plan', 'minBlocks', Number(event.target.value)),
+              }),
+              h('span', null, t('planMinBlocksHint')))),
+          h('div', { className: 'ad_row' },
+            h(Toggle, { checked: planCfg.autoTeam !== false, disabled: !off || !teamsArmed, onChange: value => patchNested('plan', 'autoTeam', value), label: t('planAutoTeam') }),
+            h('span', { className: 'ad_grow ad_sub' }, teamsArmed ? t('planAutoTeamHint') : t('planAutoTeamLocked')))))
+
+      // 6) Stall failover: what the main agent does when a helper stops producing
+      const failCfg = draft.failover ?? { enabled: true, waitSteps: 6, maxRetry: 1, fallback: 'main' }
+      const fallbackKey = failCfg.fallback ?? 'main'
+      const fallbackOptions = [...new Set([
+        'main',
+        ...armedKeys,
+        ...(fallbackKey !== 'main' ? [fallbackKey] : []),
+      ])]
+      const failSec = h('div', { className: 'ad_sec' },
+        h('div', { className: 'ad_sechead' }, h('h3', null, t('failTitle')), h('span', { className: 'ad_sechint' }, t('failHint'))),
+        h('div', { className: `ad_card ${off ? '' : 'ad_off'}` },
+          h('div', { className: 'ad_row' },
+            h(Toggle, { checked: failCfg.enabled !== false, disabled: !off, onChange: value => patchNested('failover', 'enabled', value), label: t('failOn') }),
+            h('span', { className: 'ad_grow ad_sub' }, t('failOnHint'))),
+          h('div', { className: 'ad_grid' },
+            h('label', { className: 'ad_field' },
+              h('span', null, t('failWait')),
+              h('input', {
+                type: 'number', min: 1, max: 50, className: 'ad_input', value: failCfg.waitSteps, disabled: !off,
+                onChange: event => patchNested('failover', 'waitSteps', Number(event.target.value)),
+              }),
+              h('span', null, t('failWaitHint'))),
+            h('label', { className: 'ad_field' },
+              h('span', null, t('failRetry')),
+              h('input', {
+                type: 'number', min: 0, max: 3, className: 'ad_input', value: failCfg.maxRetry, disabled: !off,
+                onChange: event => patchNested('failover', 'maxRetry', Number(event.target.value)),
+              }),
+              h('span', null, t('failRetryHint'))),
+            h('label', { className: 'ad_field' },
+              h('span', null, t('failFallback')),
+              h('select', {
+                className: 'ad_select', value: fallbackKey, disabled: !off,
+                onChange: event => patchNested('failover', 'fallback', event.target.value),
+              }, fallbackOptions.map(key => h('option', { key, value: key }, key === 'main' ? t('failFallbackMain') : key))),
+              h('span', null, t('failFallbackHint'))))))
+
+      // 7) Actions + preview
       const actions = h('div', { className: 'ad_actions' },
         h('button', { type: 'button', className: 'ad_btn primary', disabled: busy === 'save', onClick: () => { void save() } },
           busy === 'save' ? t('saving') : t('save')),
@@ -730,7 +831,7 @@ window.__ModuleLoader__.load({
         t('footer').replace('{path}', data.meta?.configPath ?? health.configPath ?? ''),
         data.meta?.pluginVersion ? ` · ${t('version')} ${data.meta.pluginVersion}${data.meta.configVersion ? ` (config v${data.meta.configVersion})` : ''}` : '')
 
-      return h('div', { className: 'ad_root' }, header, guide, master, channels, roster, scale, actions, preview, adapt, foot)
+      return h('div', { className: 'ad_root' }, header, guide, master, channels, roster, scale, planSec, failSec, actions, preview, adapt, foot)
     }
 
     // ── Onboarding card (settings.onboarding) ────────────────────────────────────────────

@@ -151,6 +151,79 @@ function eq(name, actual, expected, detail = '') {
   eq('sanitizeConfig onboarding non-boolean', cfg.onboarding.seen, false)
 }
 
+// ===== config v3 shape =====
+{
+  eq('CONFIG_VERSION is 3', CONFIG_VERSION, 3)
+  eq('DEFAULT_CONFIG.plan defaults', DEFAULT_CONFIG.plan, { enabled: true, minBlocks: 2, autoTeam: true })
+  eq('DEFAULT_CONFIG.failover defaults', DEFAULT_CONFIG.failover, { enabled: true, waitSteps: 6, maxRetry: 1, fallback: 'main' })
+}
+
+// ===== sanitizeConfig: plan / failover (v3) =====
+{
+  const cfg = sanitizeConfig({ plan: { enabled: false, minBlocks: 3, autoTeam: false } }, DEFAULT_CONFIG)
+  eq('sanitizeConfig plan fields', cfg.plan, { enabled: false, minBlocks: 3, autoTeam: false })
+}
+{
+  const cfg = sanitizeConfig({ plan: { minBlocks: 99 } }, DEFAULT_CONFIG)
+  eq('sanitizeConfig plan.minBlocks clamps to 8', cfg.plan.minBlocks, 8)
+}
+{
+  const cfg = sanitizeConfig({ plan: { minBlocks: 1 } }, DEFAULT_CONFIG)
+  eq('sanitizeConfig plan.minBlocks clamps to 2', cfg.plan.minBlocks, 2)
+}
+{
+  const cfg = sanitizeConfig({ plan: { enabled: 'yes', autoTeam: 1 } }, DEFAULT_CONFIG)
+  eq('sanitizeConfig plan non-boolean booleans kept', { enabled: cfg.plan.enabled, autoTeam: cfg.plan.autoTeam }, { enabled: true, autoTeam: true })
+}
+{
+  const cfg = sanitizeConfig({ plan: { unknown: 1 } }, DEFAULT_CONFIG)
+  assert('sanitizeConfig plan drops unknown key', !('unknown' in cfg.plan))
+}
+{
+  const cfg = sanitizeConfig({ plan: null }, DEFAULT_CONFIG)
+  eq('sanitizeConfig plan null falls back to default', cfg.plan, DEFAULT_CONFIG.plan)
+}
+{
+  const cfg = sanitizeConfig({}, { ...DEFAULT_CONFIG, plan: { enabled: false, minBlocks: 5, autoTeam: false } })
+  eq('sanitizeConfig plan untouched when not patched', cfg.plan, { enabled: false, minBlocks: 5, autoTeam: false })
+}
+{
+  const cfg = sanitizeConfig({ failover: { enabled: false, waitSteps: 20, maxRetry: 3, fallback: 'p1:m1' } }, DEFAULT_CONFIG)
+  eq('sanitizeConfig failover fields', cfg.failover, { enabled: false, waitSteps: 20, maxRetry: 3, fallback: 'p1:m1' })
+}
+{
+  const cfg = sanitizeConfig({ failover: { waitSteps: 999 } }, DEFAULT_CONFIG)
+  eq('sanitizeConfig failover.waitSteps clamps to 50', cfg.failover.waitSteps, 50)
+}
+{
+  const cfg = sanitizeConfig({ failover: { waitSteps: 0 } }, DEFAULT_CONFIG)
+  eq('sanitizeConfig failover.waitSteps 0 falls back (no hot loop)', cfg.failover.waitSteps, DEFAULT_CONFIG.failover.waitSteps)
+}
+{
+  const cfg = sanitizeConfig({ failover: { maxRetry: 0 } }, DEFAULT_CONFIG)
+  eq('sanitizeConfig failover.maxRetry 0 is meaningful', cfg.failover.maxRetry, 0)
+}
+{
+  const cfg = sanitizeConfig({ failover: { maxRetry: 9 } }, DEFAULT_CONFIG)
+  eq('sanitizeConfig failover.maxRetry clamps to 3', cfg.failover.maxRetry, 3)
+}
+{
+  const cfg = sanitizeConfig({ failover: { fallback: 'not a key' } }, DEFAULT_CONFIG)
+  eq('sanitizeConfig failover.fallback invalid to main', cfg.failover.fallback, 'main')
+}
+{
+  const cfg = sanitizeConfig({ failover: { fallback: '' } }, DEFAULT_CONFIG)
+  eq('sanitizeConfig failover.fallback empty to main', cfg.failover.fallback, 'main')
+}
+{
+  const cfg = sanitizeConfig({ failover: null }, DEFAULT_CONFIG)
+  eq('sanitizeConfig failover null falls back to default', cfg.failover, DEFAULT_CONFIG.failover)
+}
+{
+  const cfg = sanitizeConfig({}, { ...DEFAULT_CONFIG, failover: { enabled: false, waitSteps: 30, maxRetry: 2, fallback: 'x:y' } })
+  eq('sanitizeConfig failover untouched when not patched', cfg.failover, { enabled: false, waitSteps: 30, maxRetry: 2, fallback: 'x:y' })
+}
+
 // ===== buildRoster =====
 {
   // Create a temporary directory
@@ -324,6 +397,62 @@ function eq(name, actual, expected, detail = '') {
   const autoText = renderPolicy(autoConfig, fakeRoster)
   assert('renderPolicy mode=auto shows 自动', autoText.includes('自动'))
   assert('renderPolicy auto mode sentence', autoText.includes('自动模式：满足上面的条件就直接派'))
+
+  // ── v3: pre-flight estimate ──
+  assert('renderPolicy plan block appears', askText.includes('动工前预估（每次动工先做这一步'))
+  assert('renderPolicy plan three questions', askText.includes('三问：这份活能拆成几块互不依赖的独立材料吗'))
+  assert('renderPolicy plan worth-dispatching line', askText.includes('三问都是「是」→ 值得派'))
+  assert('renderPolicy plan one-sentence rule', askText.includes('预估只占一句话'))
+  assert('renderPolicy plan teams not armed', askText.includes('本轮 Agent Teams 未授权，不要建队'))
+
+  const teamsConfig = { ...askConfig, channels: { ...askConfig.channels, teams: true } }
+  const teamsText = renderPolicy(teamsConfig, fakeRoster)
+  assert('renderPolicy teams auto-team create line', teamsText.includes('直接调用 agent_teams_create 建队'))
+  assert('renderPolicy teams auto-team keeps ask-first in ask mode', teamsText.includes('询问模式下建队前仍先问用户一次'))
+  assert('renderPolicy teams armed lifts the forbidden line', !teamsText.includes('Agent Teams 本轮未授权'))
+  assert('renderPolicy teams observe uses task board', teamsText.includes('agent_teams_status 看任务板和成员状态'))
+  assert('renderPolicy teams handover uses reassign', teamsText.includes('agent_teams_reassign_task'))
+  const teamsAutoText = renderPolicy({ ...teamsConfig, mode: 'auto' }, fakeRoster)
+  assert('renderPolicy teams auto mode drops ask-first caveat', !teamsAutoText.includes('询问模式下建队前仍先问用户一次'))
+
+  const lockedText = renderPolicy({ ...teamsConfig, plan: { ...DEFAULT_CONFIG.plan, autoTeam: false } }, fakeRoster)
+  assert('renderPolicy autoTeam off keeps explicit-request rule', lockedText.includes('仍需用户明确要求才调用 agent_teams_create'))
+  assert('renderPolicy autoTeam off drops create line', !lockedText.includes('直接调用 agent_teams_create 建队'))
+
+  const planOffText = renderPolicy({ ...askConfig, plan: { ...DEFAULT_CONFIG.plan, enabled: false } }, fakeRoster)
+  assert('renderPolicy plan off one-liner', planOffText.includes('动工前预估本轮未开启'))
+  assert('renderPolicy plan off drops questions', !planOffText.includes('三问：这份活'))
+  assert('renderPolicy plan off drops team line', !planOffText.includes('拆出 ≥'))
+
+  // ── v3: stall failover ──
+  assert('renderPolicy failover block appears', askText.includes('卡住就换人（本轮要求）'))
+  assert('renderPolicy failover waitSteps value', askText.includes('你已经推进/等待了 6 步'))
+  assert('renderPolicy failover observe without teams', askText.includes('list_agents 看它是否还在动'))
+  assert('renderPolicy failover subagent handover', askText.includes('interrupt_agent 掐掉卡住的'))
+  assert('renderPolicy failover handover without subagent', (() => {
+    const text = renderPolicy({ ...askConfig, channels: { ...askConfig.channels, subagent: false } }, fakeRoster)
+    return text.includes('换一个已勾选的帮手把这块活重开')
+  })())
+  assert('renderPolicy failover retry count', askText.includes('同一个活最多改派 1 次'))
+  assert('renderPolicy failover main fallback', askText.includes('你（主 agent）自己接手做完，不要再外派'))
+  assert('renderPolicy failover carries constraints over', askText.includes('别让接手方从零重来'))
+  assert('renderPolicy failover no idle waiting', askText.includes('等待期间不要整轮空转'))
+  assert('renderPolicy failover named fallback', renderPolicy({ ...askConfig, failover: { ...DEFAULT_CONFIG.failover, fallback: 'p1:m1' } }, fakeRoster).includes('交给 p1:m1 收尾'))
+
+  const noRetryText = renderPolicy({ ...askConfig, failover: { ...DEFAULT_CONFIG.failover, maxRetry: 0 } }, fakeRoster)
+  assert('renderPolicy failover maxRetry 0 line', noRetryText.includes('本轮不重试，一次没成直接走兜底'))
+  assert('renderPolicy failover maxRetry 0 drops count', !noRetryText.includes('同一个活最多改派'))
+  assert('renderPolicy failover maxRetry 0 keeps fallback', noRetryText.includes('走兜底：你（主 agent）自己接手做完'))
+
+  const noFailoverText = renderPolicy({ ...askConfig, failover: { ...DEFAULT_CONFIG.failover, enabled: false } }, fakeRoster)
+  assert('renderPolicy failover off one-liner', noFailoverText.includes('超时改派本轮未开启'))
+  assert('renderPolicy failover off drops block', !noFailoverText.includes('卡住就换人'))
+
+  // off mode suppresses both new blocks, and still keeps the numbered dispatch rules
+  assert('renderPolicy mode=off has no plan block', !offText.includes('动工前预估'))
+  assert('renderPolicy mode=off has no failover block', !offText.includes('卡住就换人'))
+  const askRuleNumbers = askText.split('派活规则：')[1].match(/^\d+\./gm) ?? []
+  eq('renderPolicy dispatch rules stay numbered 1..9', askRuleNumbers.length, 9)
 }
 
 // ===== providerList =====
