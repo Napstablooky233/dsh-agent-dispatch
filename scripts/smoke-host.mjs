@@ -174,6 +174,8 @@ check('并发上限 / 步数门槛 / 附加要求 / 默认主力都写进策略'
 check('勾了但地区受限的帮手会被明确警示', autoText.includes('地区受限') && autoText.includes('标了地区受限/不可用的别用'))
 check('未勾选的通道被明确禁止', autoText.includes('Agency 专家本轮未授权') && autoText.includes('Agent Teams 本轮未授权'))
 check('卡住就换人写清了观察 / 改派 / 兜底口径', autoText.includes('list_agents 看它是否还在动') && autoText.includes('interrupt_agent 掐掉卡住的') && autoText.includes('同一个活最多改派 1 次') && autoText.includes('你（主 agent）自己接手做完，不要再外派'))
+check('卡住改派写明「换人先换模型」（先换模型/上游，其次换成员）', autoText.includes('换人先换模型') && autoText.includes('换掉 model 形参就能换模型/上游') && autoText.includes('同一个模型换个成员没有意义'))
+check('帮手清单标注为探测快照，不当准入', autoText.includes('这只是探测快照') && autoText.includes('不代表模型没有被弃用或限流'))
 check('未勾 Agent Teams 时预估段不给建队', autoText.includes('本轮 Agent Teams 未授权，不要建队'))
 
 const configPath = path.join(home, 'agent-dispatch', 'config.json')
@@ -194,7 +196,7 @@ const tuned = await call('POST', '/config', {
 const tunedText = sections[0].text()
 check('勾上 Agent Teams 且预估通过 → 策略允许直接建队', tuned.status === 200 && tunedText.includes('直接调用 agent_teams_create 建队') && !tunedText.includes('Agent Teams 本轮未授权'), tunedText.slice(0, 60))
 check('建队门槛与兜底对象按面板取值写进策略', tunedText.includes('拆出 ≥ 3 块互不依赖') && tunedText.includes('你已经推进/等待了 12 步') && tunedText.includes('同一个活最多改派 2 次') && tunedText.includes('交给 our-free-model:muse-spark-1.3-contributor-free 收尾'))
-check('勾上 teams 后观察 / 改派改用 Agent Teams 工具', tunedText.includes('agent_teams_status 看任务板和成员状态') && tunedText.includes('agent_teams_reassign_task'))
+check('勾上 teams 后观察 / 改派改用 Agent Teams 工具', tunedText.includes('agent_teams_status 看任务板和成员状态') && tunedText.includes('agent_teams_reassign_task') && tunedText.includes('成员路由绑着模型'))
 
 const tunedSummary = json(await call('GET', '/summary'))
 const teamsChannel = (tunedSummary?.channels ?? []).find(channel => channel.id === 'teams')

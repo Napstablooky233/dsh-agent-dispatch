@@ -70,7 +70,7 @@ Two behaviours added in config v3. Both are injected as policy text — the agen
 
 **Pre-flight estimate** (`plan`). Before starting, the agent answers one line: can this work be split into blocks that do not depend on each other, can each block be written as a self-contained prompt, and would a mistake be obvious at a glance? All three yes → worth dispatching; otherwise it does the work itself, and never splits a task apart just to be parallel. When the estimate passes and at least `plan.minBlocks` independent blocks fall out, the plugin allows building an Agent Teams team right there and turning each block into a task — but only while `channels.teams` is checked **and** `plan.autoTeam` is on. In `ask` mode it still asks the user once before building the team; with `autoTeam` off, an explicit request is always required.
 
-**Stall failover** (`failover`). A helper that produces nothing for `failover.waitSteps` steps counts as stalled: the agent first sends it one question (long research may simply be quiet), then reassigns that block to another checked helper, preferring lower measured TTFT, up to `failover.maxRetry` times, then hands it to `failover.fallback`. With Agent Teams checked, the check-and-reassign steps use `agent_teams_status` / `agent_teams_reassign_task`; otherwise `list_agents`, and `interrupt_agent` + `subagent` when the subagent channel is on. Handing over carries the confirmed constraints and whatever has already been produced; a block that was already dispatched is never dispatched twice, and waiting is never an excuse to idle.
+**Stall failover** (`failover`). A helper that produces nothing for `failover.waitSteps` steps counts as stalled: the agent first sends it one question (long research may simply be quiet), then reassigns that block to another model or another upstream first — swapping members while keeping the same model repairs nothing, because the observed stall roots were upstream overload and a deprecated model — up to `failover.maxRetry` times, then hands it to `failover.fallback`. With Agent Teams checked, the check-and-reassign steps use `agent_teams_status` / `agent_teams_reassign_task`; otherwise `list_agents`, and `interrupt_agent` + `subagent` when the subagent channel is on. Handing over carries the confirmed constraints and whatever has already been produced; a block that was already dispatched is never dispatched twice, and waiting is never an excuse to idle.
 
 Switching either one off does not remove the text — it replaces it with an explicit "not this turn" instruction, so the agent never improvises its own estimate or failover.
 
@@ -105,7 +105,7 @@ Persisted to `$DSH_HOME/agent-dispatch/config.json` (default `C:\Users\qq167\.ds
 | `onboarding.seen` | boolean | `false` | Set `true` after first-run guide viewed |
 | `notes` | string | `''` | Extra notes, written verbatim into injected text (truncated to 2000 characters) |
 
-Factory default `helpers` enables six verified-available `our-free-model` models: `nemotron-3-ultra-free`, `nemotron-3.5-lightning-free`, `space-bunny-free`, `longcat-2.5-preview-free`, `ling-3.0-flash-fin-free`, `mimo-v2.5-free` (v1 config keys without provider prefix auto-prefixed with `our-free-model:`).
+Factory default `helpers` enables six verified-available `our-free-model` models: `nemotron-3-ultra-free`, `nemotron-3.5-lightning-free`, `space-bunny-free`, `longcat-2.5-preview-free`, `ling-3.0-flash-fin-free`, `mimo-v2.6-flash-free` (v1 config keys without provider prefix auto-prefixed with `our-free-model:`).
 
 ## Channels and roster
 
@@ -164,8 +164,8 @@ node --check index.js                    # syntax check host half
 node --check client.js                   # syntax check browser half
 node scripts/check-i18n.mjs              # zh/en dictionaries same keys, and all t() keys in code exist in dictionaries
 node scripts/check-links.mjs             # every relative Markdown link and image target exists in the repo
-node scripts/selftest.mjs                # pure function self-test (policy render / config convergence / roster build), 124 checks
-node scripts/smoke-host.mjs              # fake cordis ctx runs real apply(), includes 403, persist, instant effect, 37 checks
+node scripts/selftest.mjs                # pure function self-test (policy render / config convergence / roster build), 131 checks
+node scripts/smoke-host.mjs              # fake cordis ctx runs real apply(), includes 403, persist, instant effect, 39 checks
 node scripts/smoke-client.mjs            # stub React + real /summary data, renders Panel four times, 34 checks
 ```
 

@@ -156,6 +156,12 @@ function eq(name, actual, expected, detail = '') {
   eq('CONFIG_VERSION is 3', CONFIG_VERSION, 3)
   eq('DEFAULT_CONFIG.plan defaults', DEFAULT_CONFIG.plan, { enabled: true, minBlocks: 2, autoTeam: true })
   eq('DEFAULT_CONFIG.failover defaults', DEFAULT_CONFIG.failover, { enabled: true, waitSteps: 6, maxRetry: 1, fallback: 'main' })
+  assert('default helpers drop the deprecated mimo-v2.5-free', DEFAULT_CONFIG.helpers['our-free-model:mimo-v2.5-free'] === undefined)
+  assert('default helpers ship mimo-v2.6-flash-free', DEFAULT_CONFIG.helpers['our-free-model:mimo-v2.6-flash-free']?.enabled === true)
+  const deprecatedSeed = SEED_ROWS.find(row => row.model === 'mimo-v2.5-free')
+  eq('SEED_ROWS marks mimo-v2.5-free unavailable', deprecatedSeed?.state, 'unavailable')
+  assert('SEED_ROWS deprecated row names the replacement', String(deprecatedSeed?.detail ?? '').includes('mimo-v2.6-flash-free'))
+  assert('SEED_ROWS keeps mimo-v2.6-flash-free available', SEED_ROWS.find(row => row.model === 'mimo-v2.6-flash-free')?.state === 'available')
 }
 
 // ===== sanitizeConfig: plan / failover (v3) =====
@@ -434,6 +440,8 @@ function eq(name, actual, expected, detail = '') {
     return text.includes('换一个已勾选的帮手把这块活重开')
   })())
   assert('renderPolicy failover retry count', askText.includes('同一个活最多改派 1 次'))
+  assert('renderPolicy failover switches the model before the member', askText.includes('换人先换模型') && askText.includes('同一个模型换个成员没有意义'))
+  assert('renderPolicy helper list is a probe snapshot, not an admission gate', askText.includes('这只是探测快照') && askText.includes('不代表模型没有被弃用或限流'))
   assert('renderPolicy failover main fallback', askText.includes('你（主 agent）自己接手做完，不要再外派'))
   assert('renderPolicy failover carries constraints over', askText.includes('别让接手方从零重来'))
   assert('renderPolicy failover no idle waiting', askText.includes('等待期间不要整轮空转'))

@@ -1,6 +1,6 @@
 {
   "name": "dsh-agent-dispatch",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Helper dispatch — a visible settings panel that decides whether the main agent may delegate work to helper agents, which helpers are allowed (free-lane models / subagents / experts / teams), estimates before every run whether the work can be split, reassigns work when a helper stalls, and injects that division of labor into a systemPrompt section, taking effect on save.",
   "type": "module",
   "main": "./index.js",

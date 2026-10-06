@@ -58,10 +58,10 @@ for (const file of mdFiles) {
 }
 
 if (problems.length > 0) {
-  console.error('❌ 相对链接检查未通过，找不到目标：');
+  console.error('[fail] 相对链接检查未通过，找不到目标：');
   for (const problem of problems) console.error(`   ${problem}`);
   console.error(`   总计 ${problems.length} 处`);
   process.exit(1);
 }
 
-console.log(`✅ 相对链接检查通过：${mdFiles.length} 个 Markdown，${checked} 个仓库内相对链接。`);
+console.log(`[ok] 相对链接检查通过：${mdFiles.length} 个 Markdown，${checked} 个仓库内相对链接。`);

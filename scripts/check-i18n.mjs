@@ -53,7 +53,7 @@ function extractDictObject(text) {
 
 const dictCode = extractDictObject(content)
 if (!dictCode) {
-  console.error('❌ 找不到 DICT 定义')
+  console.error('[fail] 找不到 DICT 定义')
   process.exit(1)
 }
 
@@ -62,7 +62,7 @@ try {
   // eslint-disable-next-line no-new-func
   DICT = new Function('return ' + dictCode)()
 } catch (e) {
-  console.error('❌ DICT 解析失败:', e.message)
+  console.error('[fail] DICT 解析失败:', e.message)
   process.exit(1)
 }
 
@@ -113,10 +113,10 @@ if (missingKeys.length > 0) {
 
 // Output results
 if (errors.length === 0) {
-  console.log(`✅ i18n 检查通过：zh/en 共 ${zhKeys.length} 个键，代码引用 ${usedKeys.length} 个键，全部在字典中`)
+  console.log(`[ok] i18n 检查通过：zh/en 共 ${zhKeys.length} 个键，代码引用 ${usedKeys.length} 个键，全部在字典中`)
   process.exit(0)
 } else {
-  console.error('❌ i18n 检查失败：')
+  console.error('[fail] i18n 检查失败：')
   for (const err of errors) {
     console.error('  - ' + err)
   }

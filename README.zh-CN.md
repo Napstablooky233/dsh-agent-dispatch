@@ -70,7 +70,7 @@ node scripts/install-into-profile.mjs --revert   # 撤回到备份
 
 **动工前预估**（`plan`）。动工之前，主 agent 先用一句话回答：这份活能不能拆成几块互不依赖的？每一块能不能写成自包含 prompt？做错能不能一眼看出来？三问都是「是」→ 值得派；否则自己干，也不为了并行而硬拆。预估通过、并且拆出至少 `plan.minBlocks` 块时，插件允许当场建一个 Agent Teams 队、把每块写成一条任务——但必须同时满足 `channels.teams` 已勾选 **且** `plan.autoTeam` 打开。询问模式下建队前仍先问用户一次；关掉 `autoTeam` 则永远要用户明确要求。
 
-**卡住改派**（`failover`）。帮手连续 `failover.waitSteps` 步没有任何产出就算卡住：主 agent 先发一条消息问一句（长调研可能只是安静），确认没动静就把这块活改派给另一个已勾选的帮手（优先挑实测延迟更低的），最多改派 `failover.maxRetry` 次，之后交给 `failover.fallback`。勾了 Agent Teams 时，观察与改派用 `agent_teams_status` / `agent_teams_reassign_task`；否则用 `list_agents`，子代理通道开着时用 `interrupt_agent` + `subagent`。改派时把已确认的约束和已有的部分产出一并转交；已经派出去的活绝不重复派，等待期间也不许整轮空转。
+**卡住改派**（`failover`）。帮手连续 `failover.waitSteps` 步没有任何产出就算卡住：主 agent 先发一条消息问一句（长调研可能只是安静），确认没动静就把这块活先改派给另一个模型、另一条上游（同一个模型换个成员修不好它——实证卡住的根因是上游过载和模型被弃用），最多改派 `failover.maxRetry` 次，之后交给 `failover.fallback`。勾了 Agent Teams 时，观察与改派用 `agent_teams_status` / `agent_teams_reassign_task`；否则用 `list_agents`，子代理通道开着时用 `interrupt_agent` + `subagent`。改派时把已确认的约束和已有的部分产出一并转交；已经派出去的活绝不重复派，等待期间也不许整轮空转。
 
 任一开关关掉都不是删掉文本，而是换成一句明确的「本轮不做」指令，agent 不会自己发挥一套预估或改派。
 
@@ -105,7 +105,7 @@ node scripts/install-into-profile.mjs --revert   # 撤回到备份
 | `onboarding.seen` | boolean | `false` | 看过首次引导后置 `true` |
 | `notes` | string | `''` | 附加要求，原样写进注入文本（截尾 2000 字符） |
 
-出厂默认 `helpers` 勾选了六个 `our-free-model` 下的实测可用模型：`nemotron-3-ultra-free`、`nemotron-3.5-lightning-free`、`space-bunny-free`、`longcat-2.5-preview-free`、`ling-3.0-flash-fin-free`、`mimo-v2.5-free`（v1 配置无 provider 前缀的键自动补 `our-free-model:`）。
+出厂默认 `helpers` 勾选了六个 `our-free-model` 下的实测可用模型：`nemotron-3-ultra-free`、`nemotron-3.5-lightning-free`、`space-bunny-free`、`longcat-2.5-preview-free`、`ling-3.0-flash-fin-free`、`mimo-v2.6-flash-free`（v1 配置无 provider 前缀的键自动补 `our-free-model:`）。
 
 ## 通道与名册
 
@@ -164,8 +164,8 @@ node --check index.js                    # 语法检查宿主半身
 node --check client.js                   # 语法检查浏览器半身
 node scripts/check-i18n.mjs              # zh/en 字典同键、且代码里 t() 引用的键都在字典里
 node scripts/check-links.mjs             # Markdown 相对链接与图片目标是否真实存在
-node scripts/selftest.mjs                # 纯函数自检（策略渲染 / 配置收敛 / 名册构建），124 项
-node scripts/smoke-host.mjs              # 假 cordis ctx 下跑真实 apply()，含 403、落盘、即时生效，37 项
+node scripts/selftest.mjs                # 纯函数自检（策略渲染 / 配置收敛 / 名册构建），131 项
+node scripts/smoke-host.mjs              # 假 cordis ctx 下跑真实 apply()，含 403、落盘、即时生效，39 项
 node scripts/smoke-client.mjs            # 桩 React + 真 /summary 数据，把 Panel 真渲染四遍，34 项
 ```
 
