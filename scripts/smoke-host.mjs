@@ -131,7 +131,7 @@ check('health 报告首次引导尚未看过', healthBody?.onboardingSeen === fa
 
 const summary = await call('GET', '/summary')
 const summaryBody = json(summary)
-check('GET /summary → 200 且带 config / roster / stats / preview', summary.status === 200 && summaryBody?.config?.version === 2 && Array.isArray(summaryBody?.roster?.rows) && typeof summaryBody?.preview === 'string' && typeof summaryBody?.stats === 'object')
+check('GET /summary → 200 且带 config / roster / stats / preview', summary.status === 200 && summaryBody?.config?.version === 3 && Array.isArray(summaryBody?.roster?.rows) && typeof summaryBody?.preview === 'string' && typeof summaryBody?.stats === 'object')
 check('名册能从宿主 llm 服务枚举出 provider 与模型', Array.isArray(summaryBody?.providers) && summaryBody.providers.length >= 1 && (summaryBody?.roster?.rows ?? []).length >= 2, `providers=${summaryBody?.providers?.length} rows=${summaryBody?.roster?.rows?.length}`)
 
 const askText = sections[0].text()
@@ -139,6 +139,8 @@ check('默认（询问模式）策略含分工原则与编号连续的派活规�
   const numbers = [...askText.matchAll(/^(\d+)\. /gm)].map(match => Number(match[1]))
   return numbers.length >= 6 && numbers.every((value, index) => value === index + 1)
 })(), '规则编号不连续或缺少分工句子')
+
+check('默认策略带「动工前预估」与「卡住就换人」两块（v3）', askText.includes('动工前预估（每次动工先做这一步') && askText.includes('三问：这份活能拆成几块互不依赖的独立材料吗') && askText.includes('卡住就换人（本轮要求）') && askText.includes('你已经推进/等待了 6 步'), askText.slice(askText.indexOf('动工前预估'), askText.indexOf('卡住就换人')))
 
 const armedKey = 'our-free-model:nemotron-3-ultra-free'
 const saved = await call('POST', '/config', {
@@ -171,14 +173,38 @@ check('策略只列已勾选的帮手：取消勾选的行消失，新勾选的�
 check('并发上限 / 步数门槛 / 附加要求 / 默认主力都写进策略', autoText.includes('最多同时派 3 个帮手') && autoText.includes('超过 5 步') && autoText.includes('冒烟测试备注') && autoText.includes('★默认'))
 check('勾了但地区受限的帮手会被明确警示', autoText.includes('地区受限') && autoText.includes('标了地区受限/不可用的别用'))
 check('未勾选的通道被明确禁止', autoText.includes('Agency 专家本轮未授权') && autoText.includes('Agent Teams 本轮未授权'))
+check('卡住就换人写清了观察 / 改派 / 兜底口径', autoText.includes('list_agents 看它是否还在动') && autoText.includes('interrupt_agent 掐掉卡住的') && autoText.includes('同一个活最多改派 1 次') && autoText.includes('你（主 agent）自己接手做完，不要再外派'))
+check('未勾 Agent Teams 时预估段不给建队', autoText.includes('本轮 Agent Teams 未授权，不要建队'))
 
 const configPath = path.join(home, 'agent-dispatch', 'config.json')
 const onDisk = JSON.parse(fs.readFileSync(configPath, 'utf8'))
-check('配置落盘到 $DSH_HOME/agent-dispatch/config.json（v2 形状）', onDisk.version === 2 && onDisk.helpers[armedKey]?.enabled === true && onDisk.maxHelpers === 3, JSON.stringify({ version: onDisk.version, maxHelpers: onDisk.maxHelpers }))
+check('配置落盘到 $DSH_HOME/agent-dispatch/config.json（v3 形状）', onDisk.version === 3 && onDisk.helpers[armedKey]?.enabled === true && onDisk.maxHelpers === 3, JSON.stringify({ version: onDisk.version, maxHelpers: onDisk.maxHelpers }))
+check('v3 缺省会把 plan / failover 一并落盘', onDisk.plan?.enabled === true && onDisk.plan?.minBlocks === 2 && onDisk.plan?.autoTeam === true && onDisk.failover?.enabled === true && onDisk.failover?.waitSteps === 6 && onDisk.failover?.maxRetry === 1 && onDisk.failover?.fallback === 'main', JSON.stringify({ plan: onDisk.plan, failover: onDisk.failover }))
+
+// ── v3 controls: the pre-flight estimate may lift the teams ban; failover is tunable ──
+const tuned = await call('POST', '/config', {
+  body: {
+    patch: {
+      channels: { workflow: true, subagent: true, experts: false, teams: true },
+      plan: { enabled: true, minBlocks: 3, autoTeam: true },
+      failover: { enabled: true, waitSteps: 12, maxRetry: 2, fallback: 'our-free-model:muse-spark-1.3-contributor-free' },
+    },
+  },
+})
+const tunedText = sections[0].text()
+check('勾上 Agent Teams 且预估通过 → 策略允许直接建队', tuned.status === 200 && tunedText.includes('直接调用 agent_teams_create 建队') && !tunedText.includes('Agent Teams 本轮未授权'), tunedText.slice(0, 60))
+check('建队门槛与兜底对象按面板取值写进策略', tunedText.includes('拆出 ≥ 3 块互不依赖') && tunedText.includes('你已经推进/等待了 12 步') && tunedText.includes('同一个活最多改派 2 次') && tunedText.includes('交给 our-free-model:muse-spark-1.3-contributor-free 收尾'))
+check('勾上 teams 后观察 / 改派改用 Agent Teams 工具', tunedText.includes('agent_teams_status 看任务板和成员状态') && tunedText.includes('agent_teams_reassign_task'))
+
+const tunedSummary = json(await call('GET', '/summary'))
+const teamsChannel = (tunedSummary?.channels ?? []).find(channel => channel.id === 'teams')
+check('/summary 的 teams hint 随「预估通过就直接建队」切换', teamsChannel !== undefined && teamsChannel.hint.includes('直接建队'), JSON.stringify(teamsChannel))
+check('/summary 把 plan / failover 交给面板', tunedSummary?.config?.plan?.minBlocks === 3 && tunedSummary?.config?.failover?.waitSteps === 12 && tunedSummary?.config?.failover?.maxRetry === 2 && tunedSummary?.config?.failover?.fallback === 'our-free-model:muse-spark-1.3-contributor-free')
 
 const off = await call('POST', '/config', { body: { patch: { mode: 'off' } } })
 const offText = sections[0].text()
 check('mode=off 时策略变成明确禁止派活', off.status === 200 && offText.includes('关闭') && offText.includes('不派活') && !offText.includes('派活规则'), offText.slice(0, 70))
+check('mode=off 连预估与改派两块一起收掉', !offText.includes('动工前预估') && !offText.includes('卡住就换人'))
 
 const missing = await call('GET', '/nope')
 check('未知路由 → 404', missing.status === 404 && json(missing)?.error === 'not found', `status=${missing.status}`)
@@ -199,6 +225,7 @@ const resetText = sections[0].text()
 check('POST /reset → 回到出厂默认（真替换：手填的帮手键也被清掉）', reset.status === 200 && resetBody?.config?.mode === 'ask' && resetBody?.config?.maxHelpers === 4 && resetBody?.config?.helpers?.['fake-provider:custom-model'] === undefined && resetText.includes('模式：询问'), JSON.stringify({ mode: resetBody?.config?.mode, maxHelpers: resetBody?.config?.maxHelpers, extraKey: resetBody?.config?.helpers?.['fake-provider:custom-model'] }))
 const resetDisk = JSON.parse(fs.readFileSync(configPath, 'utf8'))
 check('落盘的默认配置同样不含手填键，且默认勾选数回到出厂值', resetDisk.helpers['fake-provider:custom-model'] === undefined && Object.values(resetDisk.helpers).filter(item => item?.enabled === true).length === 6, `armedOnDisk=${Object.values(resetDisk.helpers).filter(item => item?.enabled === true).length}`)
+check('POST /reset 也把 plan / failover 恢复出厂（含被调过的门槛与兜底）', resetBody?.config?.plan?.minBlocks === 2 && resetBody?.config?.plan?.autoTeam === true && resetBody?.config?.failover?.waitSteps === 6 && resetBody?.config?.failover?.maxRetry === 1 && resetBody?.config?.failover?.fallback === 'main', JSON.stringify({ plan: resetBody?.config?.plan, failover: resetBody?.config?.failover }))
 
 let disposeOk = true
 let disposeError = ''

@@ -9,6 +9,7 @@
 - **Visible**: one settings section showing status, channels, and helper roster (with measured TTFT).
 - **Actionable**: master switch / three-mode selector / channel checkboxes / helper checkboxes / concurrency limit / extra notes — change and save.
 - **Actually effective**: policy text is a function, re-evaluated every step; when disabled it injects an explicit "no dispatch this turn" instruction.
+- **Self-checking**: before each run the agent answers one line — can this split into independent blocks? — and a helper that stops producing gets its work reassigned, then handed to a fallback.
 
 ## What it solves · Why it saves tokens
 
@@ -48,7 +49,7 @@ After install: Settings → **Agent Dispatch**.
 
 ## Panel overview
 
-Six sections, top to bottom:
+Eight sections, top to bottom:
 
 | Section | Content |
 | --- | --- |
@@ -56,10 +57,22 @@ Six sections, top to bottom:
 | Helper channels | workflow fan-out / single subagent / Agency experts / Agent Teams; unchecked channels go to the deny list |
 | Helper roster | Three merged sources (host-registered / lane probe / manual + built-in reference), each row labeled with source; ★ marks the default primary |
 | Dispatch scale | Max simultaneous helpers (1–8), step threshold for dispatch, whether short tasks are blocked from dispatch |
+| Pre-flight estimate | Whether every run starts with a one-sentence estimate; the minimum independent block count that makes a team worth building; whether a passing estimate may build the Agent Teams team on the spot |
+| Stall failover | How many steps without output count as stalled, how many reassignments per unit of work, and who finishes it afterwards (main agent, or a named checked helper) |
 | Extra notes | Written verbatim into injected text |
 | View injected text | Expand to see the **actual** policy sent to the agent, not a mockup |
 
 Top also has **first-run guide** (four steps, shown once) and **host adaptation check** (explains why each feature is present or absent). On first run the sidebar's settings area also shows a compact **onboarding card** with its own layout: "Open settings" jumps straight here, "Not now" reads it once and done.
+
+## Pre-flight estimate and stall failover
+
+Two behaviours added in config v3. Both are injected as policy text — the agent reads them every step — and both are switched in the panel.
+
+**Pre-flight estimate** (`plan`). Before starting, the agent answers one line: can this work be split into blocks that do not depend on each other, can each block be written as a self-contained prompt, and would a mistake be obvious at a glance? All three yes → worth dispatching; otherwise it does the work itself, and never splits a task apart just to be parallel. When the estimate passes and at least `plan.minBlocks` independent blocks fall out, the plugin allows building an Agent Teams team right there and turning each block into a task — but only while `channels.teams` is checked **and** `plan.autoTeam` is on. In `ask` mode it still asks the user once before building the team; with `autoTeam` off, an explicit request is always required.
+
+**Stall failover** (`failover`). A helper that produces nothing for `failover.waitSteps` steps counts as stalled: the agent first sends it one question (long research may simply be quiet), then reassigns that block to another checked helper, preferring lower measured TTFT, up to `failover.maxRetry` times, then hands it to `failover.fallback`. With Agent Teams checked, the check-and-reassign steps use `agent_teams_status` / `agent_teams_reassign_task`; otherwise `list_agents`, and `interrupt_agent` + `subagent` when the subagent channel is on. Handing over carries the confirmed constraints and whatever has already been produced; a block that was already dispatched is never dispatched twice, and waiting is never an excuse to idle.
+
+Switching either one off does not remove the text — it replaces it with an explicit "not this turn" instruction, so the agent never improvises its own estimate or failover.
 
 ## Configuration keys
 
@@ -67,7 +80,7 @@ Persisted to `$DSH_HOME/agent-dispatch/config.json` (default `C:\Users\qq167\.ds
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `version` | number | 2 | Config structure version; v1 bare model keys get provider prefix auto-added on load |
+| `version` | number | 3 | Config structure version; v1 bare model keys get provider prefix auto-added on load, v2 files gain the `plan` / `failover` blocks |
 | `enabled` | boolean | `true` | Master switch; off = injects explicit "no dispatch" instruction |
 | `mode` | `'off' \| 'ask' \| 'auto'` | `'ask'` | Dispatch mode |
 | `peer` | string | `'our-free-model'` | Roster default provider name (only decides which provider the reference roster sits under; does not require this machine to actually have it) |
@@ -82,6 +95,13 @@ Persisted to `$DSH_HOME/agent-dispatch/config.json` (default `C:\Users\qq167\.ds
 | `maxHelpers` | number | 4 | Max simultaneous helpers (clamped to 1–8) |
 | `minSteps` | number | 3 | Task must exceed this many steps to be worth dispatching (clamped to 1–20) |
 | `longTaskOnly` | boolean | `true` | When on, tasks answerable in one sentence are not dispatched |
+| `plan.enabled` | boolean | `true` | Whether every run starts with a one-sentence pre-flight estimate |
+| `plan.minBlocks` | number | 2 | Independent blocks that make a team worth building (clamped to 2–8) |
+| `plan.autoTeam` | boolean | `true` | Only counts while `channels.teams` is on: a passing estimate may build the team without a fresh request; off means an explicit request is still required |
+| `failover.enabled` | boolean | `true` | Whether a stalled helper's work is reassigned instead of waited on |
+| `failover.waitSteps` | number | 6 | Steps without output after which a helper counts as stalled (clamped to 1–50) |
+| `failover.maxRetry` | number | 1 | Reassignments per unit of work before falling back (clamped to 0–3; `0` = never retry) |
+| `failover.fallback` | string | `'main'` | Who finishes it: `'main'` (the main agent takes over) or a `provider:model` key; anything else reads as `main` |
 | `onboarding.seen` | boolean | `false` | Set `true` after first-run guide viewed |
 | `notes` | string | `''` | Extra notes, written verbatim into injected text (truncated to 2000 characters) |
 
@@ -96,7 +116,7 @@ Factory default `helpers` enables six verified-available `our-free-model` models
 | `workflow` | workflow fan-out | Run multiple independent sub-tasks side by side in one script, each can specify its own provider/model |
 | `subagent` | single subagent | Delegate one whole independent task to another context, only get the result back |
 | `experts` | Agency experts | Summon expert personas by domain (requires enabling in settings) |
-| `teams` | Agent Teams | Multi-member shared task board collaboration (only created when user explicitly requests) |
+| `teams` | Agent Teams | Multi-member shared task board collaboration (needs an explicit request, unless the pre-flight estimate passes with `plan.autoTeam` on) |
 
 ### Roster three sources
 
@@ -144,12 +164,12 @@ node --check index.js                    # syntax check host half
 node --check client.js                   # syntax check browser half
 node scripts/check-i18n.mjs              # zh/en dictionaries same keys, and all t() keys in code exist in dictionaries
 node scripts/check-links.mjs             # every relative Markdown link and image target exists in the repo
-node scripts/selftest.mjs                # pure function self-test (policy render / config convergence / roster build), 71 checks
-node scripts/smoke-host.mjs              # fake cordis ctx runs real apply(), includes 403, persist, instant effect, 26 checks
-node scripts/smoke-client.mjs            # stub React + real /summary data, renders Panel three times, 20 checks
+node scripts/selftest.mjs                # pure function self-test (policy render / config convergence / roster build), 124 checks
+node scripts/smoke-host.mjs              # fake cordis ctx runs real apply(), includes 403, persist, instant effect, 37 checks
+node scripts/smoke-client.mjs            # stub React + real /summary data, renders Panel four times, 34 checks
 ```
 
-`selftest.mjs` creates fake peer states in a temp directory, verifies roster priority, region-blocked and unavailable degradation, config convergence (0 concurrency, illegal peer, illegal key names all clamped to safe values). `smoke-host.mjs` uses fake `webServer` / `systemPrompt` services to run real `apply()`, confirms routes mounted, config persists, segment text is a function (so "save then next step effective" is a structural fact), covers non-loopback 403, bad JSON 500, disposer callable. `smoke-client.mjs` uses mini hooks runtime as stub React, feeds Panel with **actual `/summary` from host half**, asserts render tree has roster keys, has actual injected policy text, guide card disappears after viewed — `node --check` can't catch "opens blank" crashes, this layer catches those specifically.
+`selftest.mjs` creates fake peer states in a temp directory, verifies roster priority, region-blocked and unavailable degradation, config convergence (0 concurrency, illegal peer, illegal key names all clamped to safe values). `smoke-host.mjs` uses fake `webServer` / `systemPrompt` services to run real `apply()`, confirms routes mounted, config persists, segment text is a function (so "save then next step effective" is a structural fact), covers non-loopback 403, bad JSON 500, disposer callable — plus the whole v3 path: the estimate and failover blocks appearing in the injected text, the teams ban lifting once the estimate passes, and both blocks surviving `/reset`. `smoke-client.mjs` uses mini hooks runtime as stub React, feeds Panel with **actual `/summary` from host half**, asserts render tree has roster keys, has actual injected policy text, guide card disappears after viewed, and re-renders with Agent Teams armed and the estimate / failover values tuned so both new blocks — including their disabled and locked states — are proven to render. `node --check` can't catch "opens blank" crashes, this layer catches those specifically.
 
 `npm run check` (syntax), `npm run i18n` (dictionary consistency), `npm run links` (relative link and image check), `npm run test` (self-test), `npm run smoke` (host half), `npm run smoke:client` (browser half), `npm run verify` (all six) are configured in `package.json` scripts.
 

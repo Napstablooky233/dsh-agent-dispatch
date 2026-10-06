@@ -9,6 +9,7 @@
 - **看得见**：一个设置分区，显示状态、通道与帮手名册（含实测首字延迟）。
 - **点得动**：总开关 / 三态模式 / 通道勾选 / 帮手勾选 / 并发上限 / 附加要求，改完点保存。
 - **真的生效**：策略文本是函数，每步重新求值；关闭时注入「本轮不派活」的明确指令。
+- **会自检**：每次动工前先估一句话——这活能不能拆成几块互不依赖的？帮手卡住就换人，换不动就交给兜底。
 
 ## 它解决什么 · 为什么省 token
 
@@ -48,7 +49,7 @@ node scripts/install-into-profile.mjs --revert   # 撤回到备份
 
 ## 面板速览
 
-六个区块，从上到下：
+八个区块，从上到下：
 
 | 区块 | 内容 |
 | --- | --- |
@@ -56,10 +57,22 @@ node scripts/install-into-profile.mjs --revert   # 撤回到备份
 | 帮手通道 | workflow 扇出 / 子代理单派 / Agency 专家 / Agent Teams；没勾的通道写进禁止清单 |
 | 帮手名册 | 三层来源合并（宿主已注册 / 车道实测 / 手填 + 内置参考），每行标来源；★ 是默认主力 |
 | 派活规模 | 同时最多几个帮手（1–8）、任务超过多少步才值得派、短任务是否禁止派活 |
+| 动工前预估 | 是否每次动工先估一句话；拆出几块才算值得建队；预估通过能不能当场建 Agent Teams 队 |
+| 卡住改派 | 多少步没产出算卡住、同一个活最多改派几次、之后交给谁收尾（主 agent 或某个已勾选的帮手） |
 | 附加要求 | 原样写进注入文本 |
 | 查看注入文本 | 展开就是**真正**发给 agent 的策略，不是示意图 |
 
 顶部另有**首次引导**（四步，看过一次不再出现）与**宿主适配自检**（解释每个功能为什么在或不在）。首次打开时，侧栏设置区还会出现一张**引导小卡片**（自带排版，不占用设置页布局）：「打开设置去配」直达本页，「暂时不用」即只看这一次。
+
+## 动工前预估与卡住改派
+
+配置 v3 新增的两个行为。两者都写进注入文本（agent 每步都会读到），都能在面板上开关。
+
+**动工前预估**（`plan`）。动工之前，主 agent 先用一句话回答：这份活能不能拆成几块互不依赖的？每一块能不能写成自包含 prompt？做错能不能一眼看出来？三问都是「是」→ 值得派；否则自己干，也不为了并行而硬拆。预估通过、并且拆出至少 `plan.minBlocks` 块时，插件允许当场建一个 Agent Teams 队、把每块写成一条任务——但必须同时满足 `channels.teams` 已勾选 **且** `plan.autoTeam` 打开。询问模式下建队前仍先问用户一次；关掉 `autoTeam` 则永远要用户明确要求。
+
+**卡住改派**（`failover`）。帮手连续 `failover.waitSteps` 步没有任何产出就算卡住：主 agent 先发一条消息问一句（长调研可能只是安静），确认没动静就把这块活改派给另一个已勾选的帮手（优先挑实测延迟更低的），最多改派 `failover.maxRetry` 次，之后交给 `failover.fallback`。勾了 Agent Teams 时，观察与改派用 `agent_teams_status` / `agent_teams_reassign_task`；否则用 `list_agents`，子代理通道开着时用 `interrupt_agent` + `subagent`。改派时把已确认的约束和已有的部分产出一并转交；已经派出去的活绝不重复派，等待期间也不许整轮空转。
+
+任一开关关掉都不是删掉文本，而是换成一句明确的「本轮不做」指令，agent 不会自己发挥一套预估或改派。
 
 ## 配置键表
 
@@ -67,7 +80,7 @@ node scripts/install-into-profile.mjs --revert   # 撤回到备份
 
 | 键 | 类型 | 默认 | 作用 |
 | --- | --- | --- | --- |
-| `version` | number | 2 | 配置结构版本；v1 的裸模型键加载时自动补 provider 前缀 |
+| `version` | number | 3 | 配置结构版本；v1 的裸模型键加载时自动补 provider 前缀，v2 文件会补上 `plan` / `failover` 两块 |
 | `enabled` | boolean | `true` | 总开关；关 = 注入「不派活」明确指令 |
 | `mode` | `'off' \| 'ask' \| 'auto'` | `'ask'` | 派活模式 |
 | `peer` | string | `'our-free-model'` | 名册默认 provider 名（只决定参考名册挂在谁名下，不要求这台机器真有它） |
@@ -82,6 +95,13 @@ node scripts/install-into-profile.mjs --revert   # 撤回到备份
 | `maxHelpers` | number | 4 | 同时最多派几个（夹回 1–8） |
 | `minSteps` | number | 3 | 任务超过多少步才值得派（夹回 1–20） |
 | `longTaskOnly` | boolean | `true` | 打开后一句话能答完的活不许派 |
+| `plan.enabled` | boolean | `true` | 是否每次动工前先估一句话 |
+| `plan.minBlocks` | number | 2 | 拆出几块互不依赖的活才算值得建队（夹回 2–8） |
+| `plan.autoTeam` | boolean | `true` | 只在 `channels.teams` 已勾选时有意义：预估通过可以直接建队、不必等用户当场再提一次；关掉则仍要用户明确要求 |
+| `failover.enabled` | boolean | `true` | 帮手卡住时是否改派，而不是继续干等 |
+| `failover.waitSteps` | number | 6 | 多少步没产出算卡住（夹回 1–50） |
+| `failover.maxRetry` | number | 1 | 同一个活最多改派几次，用尽即走兜底（夹回 0–3；`0` = 一次不重试） |
+| `failover.fallback` | string | `'main'` | 兜底谁来做：`'main'`（主 agent 自己接手）或一个 `provider:model` 键；其它值一律读作 `main` |
 | `onboarding.seen` | boolean | `false` | 看过首次引导后置 `true` |
 | `notes` | string | `''` | 附加要求，原样写进注入文本（截尾 2000 字符） |
 
@@ -96,7 +116,7 @@ node scripts/install-into-profile.mjs --revert   # 撤回到备份
 | `workflow` | workflow 扇出 | 一个脚本里并排跑多个独立子任务，可逐项指定 provider/model |
 | `subagent` | 子代理单派 | 把一整块独立任务丢给另一个上下文，只收回结果 |
 | `experts` | Agency 专家 | 按领域召唤专家人格（需在设置里已启用） |
-| `teams` | Agent Teams 团队 | 多成员共享任务板协作（只有用户明确要求才建队） |
+| `teams` | Agent Teams 团队 | 多成员共享任务板协作（需用户明确要求；动工前预估通过且 `plan.autoTeam` 打开时可直接建队） |
 
 ### 名册三层来源
 
@@ -144,12 +164,12 @@ node --check index.js                    # 语法检查宿主半身
 node --check client.js                   # 语法检查浏览器半身
 node scripts/check-i18n.mjs              # zh/en 字典同键、且代码里 t() 引用的键都在字典里
 node scripts/check-links.mjs             # Markdown 相对链接与图片目标是否真实存在
-node scripts/selftest.mjs                # 纯函数自检（策略渲染 / 配置收敛 / 名册构建），71 项
-node scripts/smoke-host.mjs              # 假 cordis ctx 下跑真实 apply()，含 403、落盘、即时生效，26 项
-node scripts/smoke-client.mjs            # 桩 React + 真 /summary 数据，把 Panel 真渲染三遍，20 项
+node scripts/selftest.mjs                # 纯函数自检（策略渲染 / 配置收敛 / 名册构建），124 项
+node scripts/smoke-host.mjs              # 假 cordis ctx 下跑真实 apply()，含 403、落盘、即时生效，37 项
+node scripts/smoke-client.mjs            # 桩 React + 真 /summary 数据，把 Panel 真渲染四遍，34 项
 ```
 
-`selftest.mjs` 在临时目录造假伙伴状态，验证名册优先级、地区受限与暂不可用的降级、配置收敛（0 并发、非法 peer、非法键名都夹回安全值）。`smoke-host.mjs` 用假 `webServer` / `systemPrompt` 服务跑真实 `apply()`，确认路由挂上、配置落盘、段文本是函数（所以「保存后下一步生效」是结构事实），覆盖非 loopback 403、坏 JSON 500、disposer 可调用。`smoke-client.mjs` 用迷你 hooks 运行时当桩 React，喂给面板的是**宿主半身真跑出来的 `/summary`**，断言渲染树里有名册键、有真注入策略的原文、引导卡看过就消失——`node --check` 抓不到「一开就是空白」这类崩法，这一层专门抓。
+`selftest.mjs` 在临时目录造假伙伴状态，验证名册优先级、地区受限与暂不可用的降级、配置收敛（0 并发、非法 peer、非法键名都夹回安全值）。`smoke-host.mjs` 用假 `webServer` / `systemPrompt` 服务跑真实 `apply()`，确认路由挂上、配置落盘、段文本是函数（所以「保存后下一步生效」是结构事实），覆盖非 loopback 403、坏 JSON 500、disposer 可调用，以及 v3 全链路：预估与改派两块出现在注入文本里、预估通过后 teams 禁令解除、两块在 `/reset` 后回到出厂。`smoke-client.mjs` 用迷你 hooks 运行时当桩 React，喂给面板的是**宿主半身真跑出来的 `/summary`**，断言渲染树里有名册键、有真注入策略的原文、引导卡看过就消失，再勾上 Agent Teams 并调过预估与改派参数重渲染一遍，确认两个新区块（含禁用与锁定态）都真能渲染出来——`node --check` 抓不到「一开就是空白」这类崩法，这一层专门抓。
 
 `npm run check`（语法）、`npm run i18n`（字典一致性）、`npm run links`（链接检查）、`npm run test`（自检）、`npm run smoke`（宿主半身）、`npm run smoke:client`（浏览器半身）、`npm run verify`（六项全跑）已配在 `package.json` 的 scripts 里。
 

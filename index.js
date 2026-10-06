@@ -44,8 +44,13 @@ const CONFIG_FILE = 'config.json'
 const API_PREFIX = '/api/agent-dispatch'
 /** Default provider: it only says whose account the built-in reference roster hangs under; the model need not exist here. */
 const DEFAULT_PEER = 'our-free-model'
-/** Config schema version; v1 (0.1.0) helper keys carry no provider prefix and are migrated on load. */
-const CONFIG_VERSION = 2
+/**
+ * Config schema version.
+ * v1 (0.1.0) helper keys carry no provider prefix and are migrated on load.
+ * v3 adds the `plan` (pre-flight estimate) and `failover` (stall reassignment) blocks; a v2 file
+ * simply lacks them, so loading merges the factory defaults in and the next save writes version 3.
+ */
+const CONFIG_VERSION = 3
 /** Roster cache window: opening the panel repeatedly does not query the llm service every time. */
 const ROSTER_TTL_MS = 20_000
 
@@ -77,6 +82,8 @@ const CHANNELS = [
     label: 'Agent Teams 团队',
     hint: '多成员共享任务板协作（只有用户明确要求才建队）',
     prompt: 'Agent Teams（agent_teams_*）：多成员共享任务板；只有用户明确要求时才建队',
+    hintAuto: '多成员共享任务板协作（动工前预估通过即可直接建队）',
+    promptAuto: 'Agent Teams（agent_teams_*）：多成员共享任务板；动工前预估通过即可直接建队派发',
   },
 ]
 
@@ -122,6 +129,28 @@ const DEFAULT_CONFIG = {
   maxHelpers: 4,
   minSteps: 3,
   longTaskOnly: true,
+  // Pre-flight estimate: before starting work, spend one sentence deciding whether it can be handed out.
+  plan: {
+    enabled: true,
+    /** Fewer independent blocks than this are not worth a team. */
+    minBlocks: 2,
+    /**
+     * When the estimate passes, may the main agent create a team on the spot instead of waiting for
+     * an explicit request in that round. Only has an effect while `channels.teams` is checked —
+     * with the factory default it is never consulted, so the shipped policy text is unchanged.
+     */
+    autoTeam: true,
+  },
+  // Stall failover: a helper that stops producing gets its work moved, then falls back.
+  failover: {
+    enabled: true,
+    /** Steps of no output after which a helper counts as stalled. */
+    waitSteps: 6,
+    /** How many times one unit of work may be reassigned (0 = never retry, go straight to the fallback). */
+    maxRetry: 1,
+    /** `main` means the main agent finishes it itself; any `provider:model` means that helper takes over. */
+    fallback: 'main',
+  },
   onboarding: { seen: false },
   notes: '',
 }
@@ -214,7 +243,7 @@ export function apply(ctx, config) {
     config: current,
     roster,
     providers: providerList(roster, llmCatalog),
-    channels: CHANNELS.map(channel => ({ id: channel.id, label: channel.label, hint: channel.hint })),
+    channels: CHANNELS.map(channel => ({ id: channel.id, label: channel.label, hint: channelHint(channel, current) })),
     preview: policyText(),
     health: health(),
     stats: {
@@ -341,6 +370,10 @@ function renderPolicy(config, roster) {
   const usable = armed.filter(row => row.state !== 'unavailable' && row.state !== 'region-blocked')
   const primary = pickPrimary(config, armed, usable)
   const enabledChannels = CHANNELS.filter(channel => config.channels?.[channel.id] === true)
+  const teamsArmed = config.channels?.teams === true
+  const plan = config.plan ?? DEFAULT_CONFIG.plan
+  const failover = config.failover ?? DEFAULT_CONFIG.failover
+  const autoTeam = teamsArmed && plan.enabled === true && plan.autoTeam === true
 
   const lines = []
   lines.push(`【帮手调度台 · 已开启｜模式：${mode === 'auto' ? '自动' : '询问'}】`)
@@ -351,10 +384,8 @@ function renderPolicy(config, roster) {
   } else {
     lines.push('')
     lines.push('允许的帮手通道：')
-    for (const channel of enabledChannels) {
-      lines.push(`- ${channel.prompt}${channel.id === 'teams' ? '（仍需用户明确要求）' : ''}`)
-    }
-    if (config.channels?.teams !== true) lines.push('- Agent Teams 本轮未授权：不要调用 agent_teams_create 建队。')
+    for (const channel of enabledChannels) lines.push(`- ${channelPrompt(channel, config)}`)
+    if (teamsArmed === false) lines.push('- Agent Teams 本轮未授权：不要调用 agent_teams_create 建队。')
     if (config.channels?.experts !== true) lines.push('- Agency 专家本轮未授权：不要调用 summon_expert / summon_experts。')
   }
 
@@ -372,6 +403,49 @@ function renderPolicy(config, roster) {
     }
     const call = primary ? splitKey(primary) : splitKey(armed[0].key)
     lines.push(`调用形参：{ provider: '${call.provider}', model: '${call.model}' }${usable.length < armed.length ? '（标了地区受限/不可用的别用，会直接失败）' : ''}`)
+  }
+
+  // ── Pre-flight estimate: decide *before* starting whether this can be handed out at all ──
+  lines.push('')
+  if (plan.enabled === true) {
+    lines.push('动工前预估（每次动工先做这一步，一句话的估算即可）：')
+    lines.push('- 三问：这份活能拆成几块互不依赖的独立材料吗？每一块都能写成自包含 prompt、不依赖主会话上下文吗？做错能不能一眼看出来？')
+    lines.push('- 三问都是「是」→ 值得派；否则自己干，不要为了派而派，也不要为了并行而硬拆。')
+    if (autoTeam) {
+      lines.push(`- 拆出 ≥ ${plan.minBlocks} 块互不依赖、每块都能写成自包含 prompt 的活 → 直接调用 agent_teams_create 建队、把每块写成一条任务派下去，不必等用户本轮再提一次${mode === 'auto' ? '。' : '（询问模式下建队前仍先问用户一次）。'}`)
+    } else if (teamsArmed) {
+      lines.push(`- 拆出 ≥ ${plan.minBlocks} 块互不依赖的活时可以建队，但本轮没开「预估通过就直接建队」，仍需用户明确要求才调用 agent_teams_create。`)
+    } else {
+      lines.push(`- 拆出 ≥ ${plan.minBlocks} 块互不依赖的活时，用上面已勾选的通道并行；本轮 Agent Teams 未授权，不要建队。`)
+    }
+    lines.push('- 预估只占一句话：估完立刻动工，不要为它写清单或反复权衡。')
+  } else {
+    lines.push('动工前预估本轮未开启：不必每次估算，按下面「派活规则」自行判断即可。')
+  }
+
+  // ── Stall failover: a helper that stops producing gets its work moved, then falls back ──
+  lines.push('')
+  if (failover.enabled === true) {
+    const observe = teamsArmed ? 'agent_teams_status 看任务板和成员状态' : 'list_agents 看它是否还在动'
+    const handover = teamsArmed
+      ? 'agent_teams_reassign_task 把这块活改派给另一个已勾选的帮手'
+      : (config.channels?.subagent === true
+        ? 'interrupt_agent 掐掉卡住的，再用 subagent 把这块活重开给另一个已勾选的帮手'
+        : '换一个已勾选的帮手把这块活重开')
+    lines.push('卡住就换人（本轮要求）：')
+    lines.push(`- 判定卡住：这个活你已经推进/等待了 ${failover.waitSteps} 步，帮手仍然没有任何产出（没有新消息、没有任务进展、没有文件变更）。不要继续干等。`)
+    lines.push('- 别急着判卡住：明确是长调研的先发一条 send_message 问一句、等一次回复；还是没动静再按卡住处理。')
+    if (failover.maxRetry > 0) {
+      lines.push(`- 处置顺序：① ${observe}；② ${handover}，优先挑延迟更低的；③ 同一个活最多改派 ${failover.maxRetry} 次。`)
+      lines.push(`- 改派 ${failover.maxRetry} 次仍无产出、或已没有可用帮手 → ${fallbackLine(failover.fallback)}。`)
+    } else {
+      lines.push(`- 处置顺序：① ${observe}；② ${handover}，优先挑延迟更低的；③ 本轮不重试，一次没成直接走兜底。`)
+      lines.push(`- 走兜底：${fallbackLine(failover.fallback)}。`)
+    }
+    lines.push('- 改派时把已确认的约束和已有的部分产出一并转交，别让接手方从零重来；绝不重复派已经派出去的活。')
+    lines.push('- 等待期间不要整轮空转：能自己推进的部分先推进。')
+  } else {
+    lines.push('超时改派本轮未开启：帮手长时间无响应时不要改派，自己接手或按用户指示处理。')
   }
 
   lines.push('')
@@ -395,6 +469,29 @@ function renderPolicy(config, roster) {
     lines.push(`用户附加要求：${config.notes.trim()}`)
   }
   return lines.join('\n')
+}
+
+/** The plan is allowed to lift the "teams need an explicit request" rule only while teams are checked. */
+function planAutoTeam(config) {
+  const plan = config?.plan ?? DEFAULT_CONFIG.plan
+  return config?.channels?.teams === true && plan.enabled === true && plan.autoTeam === true
+}
+
+/** What the panel row says for a channel (the Agent Teams wording follows the auto-team switch). */
+function channelHint(channel, config) {
+  return channel.id === 'teams' && planAutoTeam(config) ? (channel.hintAuto ?? channel.hint) : channel.hint
+}
+
+/** What the injected text says for a channel; the panel hint and this stay in sync. */
+function channelPrompt(channel, config) {
+  return channel.id === 'teams' && planAutoTeam(config) ? (channel.promptAuto ?? channel.prompt) : channel.prompt
+}
+
+/** Who finishes the work when reassigning has run out: the main agent, or a named helper. */
+function fallbackLine(fallback) {
+  const key = String(fallback ?? 'main').trim()
+  if (key === '' || key === 'main') return '你（主 agent）自己接手做完，不要再外派'
+  return `交给 ${key} 收尾`
 }
 
 /** primary must be a checked roster entry; otherwise it falls back to the first available one. */
@@ -670,6 +767,21 @@ function sanitizeConfig(patch, current, opts = {}) {
   if (patch.maxHelpers !== undefined) next.maxHelpers = clampInt(patch.maxHelpers, 1, 8, next.maxHelpers)
   if (patch.minSteps !== undefined) next.minSteps = clampInt(patch.minSteps, 1, 20, next.minSteps)
   if (patch.longTaskOnly !== undefined) next.longTaskOnly = patch.longTaskOnly === true
+  if (patch.plan && typeof patch.plan === 'object') {
+    const plan = { ...(next.plan ?? DEFAULT_CONFIG.plan) }
+    if (typeof patch.plan.enabled === 'boolean') plan.enabled = patch.plan.enabled
+    if (patch.plan.minBlocks !== undefined) plan.minBlocks = clampInt(patch.plan.minBlocks, 2, 8, plan.minBlocks)
+    if (typeof patch.plan.autoTeam === 'boolean') plan.autoTeam = patch.plan.autoTeam
+    next.plan = plan
+  }
+  if (patch.failover && typeof patch.failover === 'object') {
+    const failover = { ...(next.failover ?? DEFAULT_CONFIG.failover) }
+    if (typeof patch.failover.enabled === 'boolean') failover.enabled = patch.failover.enabled
+    if (patch.failover.waitSteps !== undefined) failover.waitSteps = clampInt(patch.failover.waitSteps, 1, 50, failover.waitSteps)
+    if (patch.failover.maxRetry !== undefined) failover.maxRetry = clampCount(patch.failover.maxRetry, 0, 3, failover.maxRetry)
+    if (patch.failover.fallback !== undefined) failover.fallback = normalizeFailoverFallback(patch.failover.fallback)
+    next.failover = failover
+  }
   if (patch.onboarding && typeof patch.onboarding === 'object') {
     next.onboarding = { seen: patch.onboarding.seen === true }
   }
@@ -695,6 +807,20 @@ function clampInt(value, min, max, fallback) {
   const number = Number(value)
   if (!Number.isFinite(number) || number <= 0) return fallback
   return Math.min(max, Math.max(min, Math.trunc(number)))
+}
+
+/** Like clampInt, but 0 is a meaningful value (failover.maxRetry = 0 means「never retry」). */
+function clampCount(value, min, max, fallback) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return fallback
+  return Math.min(max, Math.max(min, Math.trunc(number)))
+}
+
+/** Failover target: 「main」 (the main agent finishes it) or a legal provider:model key; anything else reads as main. */
+function normalizeFailoverFallback(value) {
+  const text = String(value ?? '').trim()
+  if (text === '' || text === 'main') return 'main'
+  return HELPER_KEY_RE.test(text) ? text : 'main'
 }
 
 // ── Utilities ───────────────────────────────────────────────────────────────────

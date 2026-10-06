@@ -20,8 +20,8 @@ url: https://github.com/Napstablooky233/dsh-agent-dispatch
 name: Napstablooky233/dsh-agent-dispatch
 category: workflow
 description:
-  en: A settings panel that decides whether the main agent may delegate work and which helpers may join, injecting that division of labor into the systemPrompt section on every step.
-  zh: 一块设置面板，决定主 agent 要不要派活、准哪几个帮手上场，并把这条分工策略注入 systemPrompt 段，保存即生效。
+  en: A settings panel that decides whether the main agent may delegate work and which helpers may join, estimates before every run whether the work can be split, reassigns a stalled helper's block, and injects that division of labor into the systemPrompt section on every step.
+  zh: 一块设置面板，决定主 agent 要不要派活、准哪几个帮手上场、帮手卡住时怎么改派，并在每次动工前先估一句能否拆开，把这条分工策略注入 systemPrompt 段，保存即生效。
 ```
 
 Target path: `awesome-dsh-plugin/awesome-dsh-plugin` repository, at `data/plugins/Napstablooky233__dsh-agent-dispatch.yml`.
