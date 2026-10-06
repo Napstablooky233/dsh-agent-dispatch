@@ -8,4 +8,5 @@ coverage/
 dist/
 *.tgz
 .agent-dispatch/
+.agent-teams/
 agent-dispatch-state.json

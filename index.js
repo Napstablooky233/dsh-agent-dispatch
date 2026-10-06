@@ -101,7 +101,7 @@ const SEED_ROWS = [
   { provider: 'our-free-model', model: 'space-bunny-free', state: 'available', ttftMs: 1580 },
   { provider: 'our-free-model', model: 'longcat-2.5-preview-free', state: 'available', ttftMs: 1810 },
   { provider: 'our-free-model', model: 'mimo-v2.6-flash-free', state: 'available', ttftMs: 2040 },
-  { provider: 'our-free-model', model: 'mimo-v2.5-free', state: 'available', ttftMs: 2450 },
+  { provider: 'our-free-model', model: 'mimo-v2.5-free', state: 'unavailable', ttftMs: 0, detail: '宿主已弃用，改用 mimo-v2.6-flash-free' },
   { provider: 'our-free-model', model: 'nemotron-3-ultra-free', state: 'available', ttftMs: 6850 },
   { provider: 'our-free-model', model: 'muse-spark-1.3-contributor-free', state: 'region-blocked', ttftMs: 0 },
   { provider: 'our-free-model', model: 'muse-spark-1.2-contributor-free', state: 'region-blocked', ttftMs: 0 },
@@ -123,7 +123,7 @@ const DEFAULT_CONFIG = {
     'our-free-model:space-bunny-free': { enabled: true },
     'our-free-model:longcat-2.5-preview-free': { enabled: true },
     'our-free-model:ling-3.0-flash-fin-free': { enabled: true },
-    'our-free-model:mimo-v2.5-free': { enabled: true },
+    'our-free-model:mimo-v2.6-flash-free': { enabled: true },
   },
   primary: 'our-free-model:nemotron-3-ultra-free',
   maxHelpers: 4,
@@ -393,7 +393,7 @@ function renderPolicy(config, roster) {
   if (armed.length === 0) {
     lines.push('当前没有勾选任何帮手模型 —— 请求里带 provider/model 时必须留空或沿用主车道，不要自行挑一个模型顶上。')
   } else {
-    lines.push('勾选可用的帮手模型（按实测首字延迟排序；标注说明见行尾）：')
+    lines.push(`勾选可用的帮手模型（按实测首字延迟排序；标注说明见行尾）。注意：这只是探测快照——「可用」只代表探测那一刻能调用，不代表模型没有被弃用或限流；真调用失败就${failover.enabled === true ? '按下面「卡住就换人」换模型' : '换个模型'}，不要继续往同一个模型上派：`)
     for (const row of armed) {
       const mark = row.key === primary ? ' ★默认' : ''
       const latency = row.state === 'available' && row.ttftMs > 0 ? `${(row.ttftMs / 1000).toFixed(2)}s` : stateLabel(row.state)
@@ -428,18 +428,19 @@ function renderPolicy(config, roster) {
   if (failover.enabled === true) {
     const observe = teamsArmed ? 'agent_teams_status 看任务板和成员状态' : 'list_agents 看它是否还在动'
     const handover = teamsArmed
-      ? 'agent_teams_reassign_task 把这块活改派给另一个已勾选的帮手'
+      ? 'agent_teams_reassign_task 把这块活改派给另一个已勾选的帮手（成员路由绑着模型，换模型就是改派给路由绑在别的模型/上游上的成员）'
       : (config.channels?.subagent === true
-        ? 'interrupt_agent 掐掉卡住的，再用 subagent 把这块活重开给另一个已勾选的帮手'
-        : '换一个已勾选的帮手把这块活重开')
+        ? 'interrupt_agent 掐掉卡住的，再用 subagent 把这块活重开给另一个已勾选的帮手（换掉 model 形参就能换模型/上游）'
+        : '换一个已勾选的帮手把这块活重开（先换 model，再换人）')
     lines.push('卡住就换人（本轮要求）：')
     lines.push(`- 判定卡住：这个活你已经推进/等待了 ${failover.waitSteps} 步，帮手仍然没有任何产出（没有新消息、没有任务进展、没有文件变更）。不要继续干等。`)
     lines.push('- 别急着判卡住：明确是长调研的先发一条 send_message 问一句、等一次回复；还是没动静再按卡住处理。')
+    lines.push('- 换人先换模型：优先换模型/换上游，同一个模型换个成员没有意义——实证卡住的根因在上游或模型本身（上游过载、模型被弃用或触发限流），换成员修不好它；只有模型层面也换不动时才换成员。')
     if (failover.maxRetry > 0) {
-      lines.push(`- 处置顺序：① ${observe}；② ${handover}，优先挑延迟更低的；③ 同一个活最多改派 ${failover.maxRetry} 次。`)
+      lines.push(`- 处置顺序：① ${observe}；② ${handover}；③ 同一个活最多改派 ${failover.maxRetry} 次。`)
       lines.push(`- 改派 ${failover.maxRetry} 次仍无产出、或已没有可用帮手 → ${fallbackLine(failover.fallback)}。`)
     } else {
-      lines.push(`- 处置顺序：① ${observe}；② ${handover}，优先挑延迟更低的；③ 本轮不重试，一次没成直接走兜底。`)
+      lines.push(`- 处置顺序：① ${observe}；② ${handover}；③ 本轮不重试，一次没成直接走兜底。`)
       lines.push(`- 走兜底：${fallbackLine(failover.fallback)}。`)
     }
     lines.push('- 改派时把已确认的约束和已有的部分产出一并转交，别让接手方从零重来；绝不重复派已经派出去的活。')

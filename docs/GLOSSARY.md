@@ -54,6 +54,8 @@
 | 主 agent 接手 | the main agent takes over | The `'main'` fallback. **Do not write** "兜底模型自己来干" for a specific model — the free lane decides which model answers |
 | 一次没成直接走兜底 | one missed attempt goes straight to the fallback | `failover.maxRetry: 0`, meaning never retry |
 | 已派出去的活绝不重复派 | an already-dispatched block is never dispatched twice | Guard against re-dispatching during a handover |
+| 换人先换模型 | switch the model before the member | Failover order: another model / another upstream first. Swapping members while keeping the same model repairs nothing, because the observed stall roots were upstream overload and a deprecated model |
+| 探活快照 | probe snapshot | The checked-helper list is one probe's snapshot: 「可用」 means the model answered then, not that it is not deprecated or throttled — a real call that fails means switching models |
 
 ### 2.1 Source tags as rendered in the UI
 

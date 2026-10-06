@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-10-06
+
+### Changed
+
+- **Stall failover switches the model before the member.** The injected policy now says it outright: a stalled helper's block goes to another model or another upstream first, and swapping members while keeping the same model is pointless — the observed roots of stalled free-lane work were upstream overload (`[503] Upstream error`, three times) and a model the host had deprecated, neither of which a different member repairs. Both READMEs, the 「卡住改派」 panel hint and `docs/GLOSSARY.md` follow the same wording.
+- **The checked-helper list is labelled as a probe snapshot, not an admission check.** The injected list and the panel's roster hint now state that 「可用」 only means the model answered when the lane was probed: a probe cannot see a deprecated or throttled model, so a real call that fails means switching models, not re-dispatching to the same one.
+- **Factory default `helpers` enables `mimo-v2.6-flash-free`** in place of the deprecated `mimo-v2.5-free`, so the shipped configuration no longer points dispatched work at a model the host refuses; the built-in reference row for `mimo-v2.5-free` now carries state `unavailable` with the deprecation note.
+
+### Fixed
+
+- `.gitignore` ignores `.agent-teams/`, so Agent Teams state files no longer appear as untracked workspace noise.
+- `scripts/check-i18n.mjs` and `scripts/check-links.mjs` print `[ok]` / `[fail]` instead of the emoji-presentation marks they printed before (U+2705 / U+274C), keeping every file free of emoji as `AGENTS.md` requires.
+- Self-test counts in both READMEs refreshed to the measured values after the new assertions landed (self-test 131, host smoke 39, client smoke 34).
+
 ## [0.3.0] - 2026-09-29
 
 ### Added
