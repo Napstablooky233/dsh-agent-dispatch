@@ -2,13 +2,15 @@
  * dsh-agent-dispatch i18n consistency guard.
  * Reads client.js's DICT, asserts zh/en keys are identical, no duplicate keys,
  * and all keys referenced in t() calls exist in the dictionary.
- * Run: node <repo-path>\scripts\check-i18n.mjs
+ * Run: node scripts/check-i18n.mjs
  */
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const clientPath = path.join('D:', 'dsh-agent-dispatch', 'client.js')
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const clientPath = path.join(root, 'client.js')
 const content = fs.readFileSync(clientPath, 'utf8')
 
 // Extract the DICT object: find the matching "};" from "const DICT = {"
