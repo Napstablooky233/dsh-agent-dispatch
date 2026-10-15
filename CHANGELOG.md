@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-10-15
+
+### Added
+
+- **主动派 (`proactive`) — a fourth dispatch mode, and the new factory default.** The injected policy now opens with a stance instead of a rule list: `默认姿态：主动分工，不等用户点名——用户不主动安排才是常态`, followed by the instruction to scan the turn's work for independent blocks before anything else. Every mode that is not `off` carries that line; the four modes differ only in who nods. `off` dispatches nothing; `ask` makes the agent state its own concrete split (哪几块、几个帮手、各做什么) and wait for one nod; `proactive` sends low-risk mechanical blocks out immediately with a one-line notice while every high-cost action asks first; `auto` never asks. Panel labels 关闭 / 先问我 / 主动派 / 直接派 ↔ `Off / Ask me / Proactive / Auto`.
+- **Initiative signals inside the estimate block** — `顺手就该派的信号`: the user handed over one large goal with several sub-parts under it; wording like 「分别 / 各 / 逐一 / 批量 / 对比 N 个」; several files to read or sources to query; repeated formatting / translation / copy-edit / list making; a single block over `minSteps` steps that can still be cut into self-contained pieces; or dispatch time the main agent can spend on something else. Signals only point — the three pre-flight questions still decide.
+- **An anti-pattern rule**, so the numbered dispatch rules go 9 → 10: waiting for the user to speak first; handing 「要不要派帮手」 back as a question; splitting a job apart or faking parallelism just to look busy; dispatching the same block to two helpers; dispatching the judgement itself. It renders in every active mode.
+
+### Changed
+
+- **The empty question is gone.** `ask` mode used to inject 「派活前先用一句话问用户『要不要派帮手、派几个』」 — the exact sentence that read as passivity. It now requires a concrete split proposal (which blocks, how many helpers, what each one does) before the single nod, and says outright that retreating to the empty question is banned.
+- **Deliberately not maximal initiative.** Under `proactive` the high-cost boundary still costs one question: building an Agent Teams team, summoning an Agency expert, leaving the free lane, writing / deleting / committing / publishing, and opening more helpers at once than `clamp(maxHelpers, 1, 3)` (3 with the factory cap of 4). The team line is now mode-aware too: in `先问我` and `主动派` a passing estimate still asks once before the team is built, and only `直接派` builds it without asking.
+- **Factory default `mode` is `'proactive'`** and `sanitizeConfig` accepts the value (`off` / `ask` / `proactive` / `auto`). An existing config file keeps whatever it holds, so an upgrade never changes behaviour until the panel or the file is edited; `POST /reset` now restores `proactive`. `CONFIG_VERSION` stays 3: a new enum value needs no migration, since every older file is still valid as written.
+- Both READMEs gained a 「主动分工与四态模式」 section, and the `mode` config row, the panel-section table, the `ask`-mode team sentence, the onboarding step and the self-test counts follow. `docs/GLOSSARY.md` now says 四态模式 and carries four new terms: 默认姿态, 主动派, 高成本动作, 顺手就该派的信号. The market-entry yml description and the `package.json` description follow the same wording.
+- Qualifying blocks dispatch before deep reading; one independent block is enough. Team confirmation no longer blocks lightweight dispatch, and `minSteps` is a pre-start estimate rather than a count of work already done.
+- Self-test counts in both READMEs refreshed to the measured values after the new assertions landed (self-test 148, host smoke 44, client smoke 37).
+
+### Fixed
+
+- The i18n check resolves `client.js` relative to its own module instead of a hard-coded Windows checkout. CI also runs it outside the checkout directory to cover Linux runners and working-directory independence.
+
 ## [0.3.1] - 2026-10-06
 
 ### Changed
