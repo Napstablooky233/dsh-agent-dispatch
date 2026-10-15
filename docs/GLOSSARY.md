@@ -31,7 +31,10 @@
 | 名册／帮手名册 | roster / helper roster | Helper list shown in the panel |
 | 通道 | channel | Four dispatch pathways; panel order = `CHANNEL_IDS` order |
 | 派活 | dispatch | Verb. **Do not write** "外派 / 分发 / 调度" (except panel name "帮手调度") |
-| 三态模式 | three-mode selector | `关闭 / 先问我 / 直接派` ↔ `Off / Ask me / Auto` |
+| 四态模式 | four-mode selector | `关闭 / 先问我 / 主动派 / 直接派` ↔ `Off / Ask me / Proactive / Auto` |
+| 默认姿态 | default stance | The opening line of the injected policy: scan for a splittable job on your own every round instead of waiting to be told. Belongs to every active mode, not to one of them |
+| 主动派 | Proactive | The factory default mode and the middle setting: low-risk mechanical blocks are dispatched on the agent's own initiative with a one-line notice, while every high-cost action asks the user first |
+| 高成本动作 | high-cost action | What still costs one question in 主动派: building an Agent Teams team, summoning an Agency expert, leaving the free lane, writing/deleting/committing/publishing, or opening more helpers at once than the threshold. **Do not write** "危险操作" — risk is not the criterion, cost is |
 | 并发上限 | concurrency limit | Maximum simultaneous helpers, clamped to 1–8 |
 | 步数门槛 | step threshold | Minimum steps before dispatching is worthwhile, clamped to 1–20 |
 | 附加要求 | extra notes | Written verbatim into the injected text |
@@ -47,6 +50,7 @@
 | 注入 | inject | Write policy into `systemPrompt` section |
 | 预览 | preview | Panel-expanded **actual** injected text |
 | 动工前预估 | pre-flight estimate | Config block `plan`. One-sentence estimate before every run: can this be split into blocks that do not depend on each other? |
+| 顺手就该派的信号 | dispatch signals | The signs that answer the estimate on their own: a large goal with several sub-parts under it, 「分别 / 各 / 逐一 / 批量 / 对比 N 个」, several files or sources to read, repeated formatting / translation / transcription, one block that can be cut into self-contained pieces. Signals point toward dispatching; they never replace the three questions |
 | 互不依赖 | independent of each other | The property that makes a split worth doing. Do not write "并行" as the criterion — parallelism is the consequence, independence is the test |
 | 值得建队 | worth building a team | Estimate passed **and** at least `plan.minBlocks` independent blocks fell out |
 | 卡住改派 | stall failover | Config block `failover`. Reassign a helper's block after `failover.waitSteps` steps without output |

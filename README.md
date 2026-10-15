@@ -7,8 +7,9 @@
 > One settings pane: decide whether the main agent gets help, which helpers play — and it **actually works**. Policy is injected as a `systemPrompt` section; save and it takes effect.
 
 - **Visible**: one settings section showing status, channels, and helper roster (with measured TTFT).
-- **Actionable**: master switch / three-mode selector / channel checkboxes / helper checkboxes / concurrency limit / extra notes — change and save.
+- **Actionable**: master switch / four-mode selector / channel checkboxes / helper checkboxes / concurrency limit / extra notes — change and save.
 - **Actually effective**: policy text is a function, re-evaluated every step; when disabled it injects an explicit "no dispatch this turn" instruction.
+- **Speaks first**: the default stance scans every turn for a possible split instead of waiting to be named, and never hands the "should I dispatch helpers?" question back.
 - **Self-checking**: before each run the agent answers one line — can this split into independent blocks? — and a helper that stops producing gets its work reassigned, then handed to a fallback.
 
 ## What it solves · Why it saves tokens
@@ -53,7 +54,7 @@ Eight sections, top to bottom:
 
 | Section | Content |
 | --- | --- |
-| Master switch & three-mode selector | On / Off; three modes: Off / Ask me / Auto |
+| Master switch & four-mode selector | On / Off; four modes: Off / Ask me / Proactive / Auto |
 | Helper channels | workflow fan-out / single subagent / Agency experts / Agent Teams; unchecked channels go to the deny list |
 | Helper roster | Three merged sources (host-registered / lane probe / manual + built-in reference), each row labeled with source; ★ marks the default primary |
 | Dispatch scale | Max simultaneous helpers (1–8), step threshold for dispatch, whether short tasks are blocked from dispatch |
@@ -64,11 +65,30 @@ Eight sections, top to bottom:
 
 Top also has **first-run guide** (four steps, shown once) and **host adaptation check** (explains why each feature is present or absent). On first run the sidebar's settings area also shows a compact **onboarding card** with its own layout: "Open settings" jumps straight here, "Not now" reads it once and done.
 
+## Proactive dispatch and the four modes
+
+The injected text opens with a stance rather than waiting to be spoken to: **scan every turn for a possible split before starting**. When it does not dispatch, it says in one line why it is doing the work itself, and it never hands a bare "should I dispatch helpers?" question back.
+
+The four modes differ only in who nods:
+
+| Mode | Behaviour |
+| --- | --- |
+| Off | No dispatch at all this turn: no fan-out, no summons, no team |
+| Ask me | The agent scans itself and states a concrete split (which blocks, how many helpers, who does what), then waits for one nod |
+| Proactive (factory default) | Low-risk mechanical blocks go out immediately with a one-line notice; high-cost actions ask first |
+| Auto | Dispatches whenever the rules match, without asking |
+
+Low-risk mechanical blocks are read-only retrieval, multi-source research, per-item audits, copy-edit-reorder, translation, formatting and first drafts. High-cost actions are building an Agent Teams team, summoning an Agency expert, leaving the free lane, writing / deleting / committing / publishing, and opening more helpers at once than the concurrency limit — under Proactive these still ask first.
+
+The injected text also carries a **dispatch signal** list: a large goal with several sub-parts under it, wording like "each / respectively / one by one / in bulk / compare N of them", several files or sources to read, repeated formatting and translation, and one block that can be cut into self-contained pieces. Judge blocks individually: one self-contained block with a clear acceptance check is enough to dispatch it; the remaining design and judgement stay with the main agent. Signals only point; they never require waiting for every sub-task to qualify.
+
+The dispatch rules also name the anti-patterns: waiting for the user to speak first, handing the "should I dispatch helpers?" question back, splitting a job apart just to be parallel, dispatching the same block twice, and dispatching the judgement itself — none of those count as dispatching.
+
 ## Pre-flight estimate and stall failover
 
 Two behaviours added in config v3. Both are injected as policy text — the agent reads them every step — and both are switched in the panel.
 
-**Pre-flight estimate** (`plan`). Before starting, the agent answers one line: can this work be split into blocks that do not depend on each other, can each block be written as a self-contained prompt, and would a mistake be obvious at a glance? All three yes → worth dispatching; otherwise it does the work itself, and never splits a task apart just to be parallel. When the estimate passes and at least `plan.minBlocks` independent blocks fall out, the plugin allows building an Agent Teams team right there and turning each block into a task — but only while `channels.teams` is checked **and** `plan.autoTeam` is on. In `ask` mode it still asks the user once before building the team; with `autoTeam` off, an explicit request is always required.
+**Pre-flight estimate** (`plan`). Before starting, judge each block: can it be delivered independently, written as a self-contained prompt, and checked with a clear acceptance rule? One qualifying block is enough to dispatch it; the main agent keeps the remaining design and judgement. Low-risk blocks go first through enabled `workflow` / `subagent` channels. Only when shared task-board state is genuinely needed, and at least `plan.minBlocks` blocks exist, should the agent consider an Agent Teams team; confirmation for building the team does not block other independent dispatches. In `ask` and `proactive` mode it still asks the user once before building the team (building a team counts as a high-cost action); in `auto` mode it does not; with `autoTeam` off, an explicit request is always required. The `minSteps` threshold is a pre-start estimate, not a count of steps already spent.
 
 **Stall failover** (`failover`). A helper that produces nothing for `failover.waitSteps` steps counts as stalled: the agent first sends it one question (long research may simply be quiet), then reassigns that block to another model or another upstream first — swapping members while keeping the same model repairs nothing, because the observed stall roots were upstream overload and a deprecated model — up to `failover.maxRetry` times, then hands it to `failover.fallback`. With Agent Teams checked, the check-and-reassign steps use `agent_teams_status` / `agent_teams_reassign_task`; otherwise `list_agents`, and `interrupt_agent` + `subagent` when the subagent channel is on. Handing over carries the confirmed constraints and whatever has already been produced; a block that was already dispatched is never dispatched twice, and waiting is never an excuse to idle.
 
@@ -82,7 +102,7 @@ Persisted to `$DSH_HOME/agent-dispatch/config.json` (default `C:\Users\<user>\.d
 | --- | --- | --- | --- |
 | `version` | number | 3 | Config structure version; v1 bare model keys get provider prefix auto-added on load, v2 files gain the `plan` / `failover` blocks |
 | `enabled` | boolean | `true` | Master switch; off = injects explicit "no dispatch" instruction |
-| `mode` | `'off' \| 'ask' \| 'auto'` | `'ask'` | Dispatch mode |
+| `mode` | `'off' \| 'ask' \| 'proactive' \| 'auto'` | `'proactive'` | Dispatch mode |
 | `peer` | string | `'our-free-model'` | Roster default provider name (only decides which provider the reference roster sits under; does not require this machine to actually have it) |
 | `discover.llm` | boolean | `true` | Whether to ask host LLM service to enumerate provider/model |
 | `discover.siblings` | boolean | `true` | Whether to scan sibling plugins' status files under `$DSH_HOME` |
@@ -164,9 +184,9 @@ node --check index.js                    # syntax check host half
 node --check client.js                   # syntax check browser half
 node scripts/check-i18n.mjs              # zh/en dictionaries same keys, and all t() keys in code exist in dictionaries
 node scripts/check-links.mjs             # every relative Markdown link and image target exists in the repo
-node scripts/selftest.mjs                # pure function self-test (policy render / config convergence / roster build), 131 checks
-node scripts/smoke-host.mjs              # fake cordis ctx runs real apply(), includes 403, persist, instant effect, 39 checks
-node scripts/smoke-client.mjs            # stub React + real /summary data, renders Panel four times, 34 checks
+node scripts/selftest.mjs                # pure function self-test (policy render / config convergence / roster build), 148 checks
+node scripts/smoke-host.mjs              # fake cordis ctx runs real apply(), includes 403, persist, instant effect, 44 checks
+node scripts/smoke-client.mjs            # stub React + real /summary data, renders Panel four times, 37 checks
 ```
 
 `selftest.mjs` creates fake peer states in a temp directory, verifies roster priority, region-blocked and unavailable degradation, config convergence (0 concurrency, illegal peer, illegal key names all clamped to safe values). `smoke-host.mjs` uses fake `webServer` / `systemPrompt` services to run real `apply()`, confirms routes mounted, config persists, segment text is a function (so "save then next step effective" is a structural fact), covers non-loopback 403, bad JSON 500, disposer callable — plus the whole v3 path: the estimate and failover blocks appearing in the injected text, the teams ban lifting once the estimate passes, and both blocks surviving `/reset`. `smoke-client.mjs` uses mini hooks runtime as stub React, feeds Panel with **actual `/summary` from host half**, asserts render tree has roster keys, has actual injected policy text, guide card disappears after viewed, and re-renders with Agent Teams armed and the estimate / failover values tuned so both new blocks — including their disabled and locked states — are proven to render. `node --check` can't catch "opens blank" crashes, this layer catches those specifically.

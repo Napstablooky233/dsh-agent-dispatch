@@ -263,6 +263,15 @@ const selects = findAll(second.tree, node => node.type === 'select')
 check('兜底对象渲染成 select，默认项是「主 agent 自己接手」', selects.length === 1 && String(selects[0].props?.value) === 'main' && String(selects[0].children?.[0]?.children?.[0] ?? '') === dictionaries.zh.failFallbackMain, JSON.stringify(selects[0]?.children?.length))
 check('teams 未勾选时建队开关禁用并给出锁定说明', text.includes(dictionaries.zh.planAutoTeamLocked) && findAll(second.tree, node => node.props?.disabled === true).length >= 2)
 
+// ── v4: initiative modes — four buttons, exactly one pressed, the hint matching the mode ──
+const MODE_ORDER = ['off', 'ask', 'proactive', 'auto']
+const segRow = findAll(second.tree, node => node.props?.className === 'ad_seg')
+const modeButtons = segRow[0]?.children ?? []
+const modeLabels = modeButtons.map(node => (Array.isArray(node.children) ? node.children.join('') : String(node.children ?? '')))
+check('派活模式渲染成四态选择器（关闭 / 先问我 / 主动派 / 直接派）', modeButtons.length === 4 && modeLabels.every((label, index) => label === dictionaries.zh[`mode.${MODE_ORDER[index]}`]), modeLabels.join(' / '))
+check('四态选择器只高亮当前模式，并按模式给出节奏说明', modeButtons.filter(node => node.props?.['aria-pressed'] === 'true').length === 1 && modeButtons[MODE_ORDER.indexOf(summary.config.mode)]?.props?.['aria-pressed'] === 'true' && text.includes(dictionaries.zh[`modeHint.${summary.config.mode}`]), `mode=${summary.config.mode} pressed=${modeButtons.map(node => node.props?.['aria-pressed']).join(',')}`)
+check('面板的模式标签与注入文本里的模式标签逐字一致（预览 = 真发出去的那段）', summary.preview.includes(`模式：${dictionaries.zh[`mode.${summary.config.mode}`]}`) && summary.preview.includes('默认姿态：主动分工'))
+
 // Third pass: after the guide has been seen, the guide card should disappear
 summary.health.onboardingSeen = true
 renderOnce(section.render, props)

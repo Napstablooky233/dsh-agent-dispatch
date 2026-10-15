@@ -122,8 +122,16 @@ function eq(name, actual, expected, detail = '') {
   eq('sanitizeConfig mode=ask', cfg.mode, 'ask')
 }
 {
+  const cfg = sanitizeConfig({ mode: 'proactive' }, DEFAULT_CONFIG)
+  eq('sanitizeConfig mode=proactive', cfg.mode, 'proactive')
+}
+{
   const cfg = sanitizeConfig({ mode: 'auto' }, DEFAULT_CONFIG)
   eq('sanitizeConfig mode=auto', cfg.mode, 'auto')
+}
+{
+  const cfg = sanitizeConfig({ mode: 'eager' }, DEFAULT_CONFIG)
+  eq('sanitizeConfig unknown mode kept as previous', cfg.mode, DEFAULT_CONFIG.mode)
 }
 {
   const cfg = sanitizeConfig({ mode: 'invalid' }, DEFAULT_CONFIG)
@@ -154,6 +162,7 @@ function eq(name, actual, expected, detail = '') {
 // ===== config v3 shape =====
 {
   eq('CONFIG_VERSION is 3', CONFIG_VERSION, 3)
+  eq('DEFAULT_CONFIG.mode is proactive', DEFAULT_CONFIG.mode, 'proactive')
   eq('DEFAULT_CONFIG.plan defaults', DEFAULT_CONFIG.plan, { enabled: true, minBlocks: 2, autoTeam: true })
   eq('DEFAULT_CONFIG.failover defaults', DEFAULT_CONFIG.failover, { enabled: true, waitSteps: 6, maxRetry: 1, fallback: 'main' })
   assert('default helpers drop the deprecated mimo-v2.5-free', DEFAULT_CONFIG.helpers['our-free-model:mimo-v2.5-free'] === undefined)
@@ -376,7 +385,8 @@ function eq(name, actual, expected, detail = '') {
   // mode ask
   const askConfig = { ...DEFAULT_CONFIG, enabled: true, mode: 'ask', helpers: { 'p1:m1': { enabled: true } }, channels: { workflow: true, subagent: true, experts: false, teams: false }, maxHelpers: 4, minSteps: 3, longTaskOnly: true, notes: 'test note', primary: 'p1:m1' }
   const askText = renderPolicy(askConfig, fakeRoster)
-  assert('renderPolicy mode=ask shows 询问', askText.includes('询问'))
+  assert('renderPolicy mode=ask shows 先问我', askText.includes('模式：先问我'))
+  assert('renderPolicy every mode states the proactive stance', askText.includes('默认姿态：主动分工，不等用户点名'))
   assert('renderPolicy armed only lists checked', askText.includes('p1:m1'))
   assert('renderPolicy unarmed not listed', !askText.includes('p2:m2'))
   // Rows that are checked but in a bad state: get a warning + the "don't use" callout
@@ -388,7 +398,7 @@ function eq(name, actual, expected, detail = '') {
   assert('renderPolicy minSteps appears', askText.includes('超过 3 步'))
   assert('renderPolicy longTaskOnly appears', askText.includes('短任务不要派'))
   assert('renderPolicy notes appears', askText.includes('用户附加要求：test note'))
-  assert('renderPolicy ask mode sentence', askText.includes('询问模式：派活前先用一句话问用户'))
+  assert('renderPolicy ask mode sentence', askText.includes('先问我模式：把你扫出来的分工方案') && askText.includes('不要退回成「要不要派帮手」这种空问题'))
   assert('renderPolicy division sentence', askText.includes('简单的活优先派出去，难的活自己做'))
   assert('renderPolicy unchecked channel forbidden', askText.includes('Agent Teams 本轮未授权'))
   assert('renderPolicy unchecked experts forbidden', askText.includes('Agency 专家本轮未授权'))
@@ -401,25 +411,43 @@ function eq(name, actual, expected, detail = '') {
   // mode auto
   const autoConfig = { ...askConfig, mode: 'auto' }
   const autoText = renderPolicy(autoConfig, fakeRoster)
-  assert('renderPolicy mode=auto shows 自动', autoText.includes('自动'))
-  assert('renderPolicy auto mode sentence', autoText.includes('自动模式：满足上面的条件就直接派'))
+  assert('renderPolicy mode=auto shows 直接派', autoText.includes('模式：直接派'))
+  assert('renderPolicy auto mode sentence', autoText.includes('直接派模式：满足上面的条件就直接派'))
+
+  // mode proactive: the factory default — scan on its own, dispatch the cheap blocks, ask before the rest
+  const proactiveConfig = { ...askConfig, mode: 'proactive' }
+  const proactiveText = renderPolicy(proactiveConfig, fakeRoster)
+  assert('renderPolicy mode=proactive shows 主动派', proactiveText.includes('模式：主动派'))
+  assert('renderPolicy proactive stance line', proactiveText.includes('默认姿态：主动分工，不等用户点名') && proactiveText.includes('每轮开工第一件事'))
+  assert('renderPolicy proactive dispatches low-risk work with a notice', proactiveText.includes('低风险机械活') && proactiveText.includes('一边派一边一句话报备'))
+  assert('renderPolicy proactive names the high-cost boundary', proactiveText.includes('高成本动作先问一句再动手') && proactiveText.includes('建 Agent Teams') && proactiveText.includes('非免费车道'))
+  assert('renderPolicy proactive parallel threshold derives from maxHelpers', proactiveText.includes('一次铺开超过 3 个帮手'))
+  assert('renderPolicy anti-pattern rule appears in every active mode', proactiveText.includes('反模式（别再犯）') && askText.includes('反模式（别再犯）') && autoText.includes('反模式（别再犯）'))
+  assert('renderPolicy anti-pattern bans asking the empty question back', proactiveText.includes('把「要不要派帮手」当问题问回去'))
+  assert('renderPolicy ask mode does not claim to dispatch on its own', !askText.includes('一边派一边一句话报备'))
 
   // ── v3: pre-flight estimate ──
-  assert('renderPolicy plan block appears', askText.includes('动工前预估（每次动工先做这一步'))
-  assert('renderPolicy plan three questions', askText.includes('三问：这份活能拆成几块互不依赖的独立材料吗'))
-  assert('renderPolicy plan worth-dispatching line', askText.includes('三问都是「是」→ 值得派'))
+  assert('renderPolicy plan block appears', askText.includes('动工前预估（每轮开工的第一件事'))
+  assert('renderPolicy plan dispatches per qualifying block', askText.includes('对一个块三问都是「是」→ 值得派') && askText.includes('不要先累计执行步数'))
+  assert('renderPolicy dispatches before deep reading', proactiveText.includes('先分工再深挖') && proactiveText.includes('单块也值得派'))
+  assert('renderPolicy requires actual dispatch not just a proposal', proactiveText.includes('实际调用派活工具') && !askText.includes('实际调用派活工具'))
+  assert('renderPolicy plan three questions', askText.includes('三问：逐块判断能否独立交付'))
+  assert('renderPolicy plan dispatch signals', askText.includes('顺手就该派的信号') && askText.includes('要读多份文件或查多个来源'))
+  assert('renderPolicy plan worth-dispatching line', askText.includes('对一个块三问都是「是」→ 值得派'))
   assert('renderPolicy plan one-sentence rule', askText.includes('预估只占一句话'))
   assert('renderPolicy plan teams not armed', askText.includes('本轮 Agent Teams 未授权，不要建队'))
 
   const teamsConfig = { ...askConfig, channels: { ...askConfig.channels, teams: true } }
   const teamsText = renderPolicy(teamsConfig, fakeRoster)
-  assert('renderPolicy teams auto-team create line', teamsText.includes('直接调用 agent_teams_create 建队'))
-  assert('renderPolicy teams auto-team keeps ask-first in ask mode', teamsText.includes('询问模式下建队前仍先问用户一次'))
+  assert('renderPolicy teams auto-team create line', teamsText.includes('按模式调用 agent_teams_create 建队'))
+  assert('renderPolicy teams auto-team keeps ask-first in ask mode', teamsText.includes('建队属于高成本动作，先问我模式下先问用户一句再动手'))
   assert('renderPolicy teams armed lifts the forbidden line', !teamsText.includes('Agent Teams 本轮未授权'))
   assert('renderPolicy teams observe uses task board', teamsText.includes('agent_teams_status 看任务板和成员状态'))
   assert('renderPolicy teams handover uses reassign', teamsText.includes('agent_teams_reassign_task'))
+  const teamsProactiveText = renderPolicy({ ...teamsConfig, mode: 'proactive' }, fakeRoster)
+  assert('renderPolicy teams keeps ask-first in proactive mode', teamsProactiveText.includes('建队属于高成本动作，主动派模式下先问用户一句再动手'))
   const teamsAutoText = renderPolicy({ ...teamsConfig, mode: 'auto' }, fakeRoster)
-  assert('renderPolicy teams auto mode drops ask-first caveat', !teamsAutoText.includes('询问模式下建队前仍先问用户一次'))
+  assert('renderPolicy teams auto mode drops ask-first caveat', !teamsAutoText.includes('先问用户一句再动手'))
 
   const lockedText = renderPolicy({ ...teamsConfig, plan: { ...DEFAULT_CONFIG.plan, autoTeam: false } }, fakeRoster)
   assert('renderPolicy autoTeam off keeps explicit-request rule', lockedText.includes('仍需用户明确要求才调用 agent_teams_create'))
@@ -460,7 +488,7 @@ function eq(name, actual, expected, detail = '') {
   assert('renderPolicy mode=off has no plan block', !offText.includes('动工前预估'))
   assert('renderPolicy mode=off has no failover block', !offText.includes('卡住就换人'))
   const askRuleNumbers = askText.split('派活规则：')[1].match(/^\d+\./gm) ?? []
-  eq('renderPolicy dispatch rules stay numbered 1..9', askRuleNumbers.length, 9)
+  eq('renderPolicy dispatch rules stay numbered 1..10', askRuleNumbers.length, 10)
 }
 
 // ===== providerList =====

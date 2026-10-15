@@ -7,7 +7,7 @@
  *
  * Four jobs:
  *   1. A persisted config ($DSH_HOME/agent-dispatch/config.json): master switch, mode
- *      (off / ask / auto), allowed helper channels, checked helper models, concurrency cap.
+ *      (off / ask / proactive / auto), allowed helper channels, checked helper models, concurrency cap.
  *   2. The helper roster (the point of this version: it depends on no other plugin). Three sources merged:
  *      a) real `ctx.llm` enumeration: which providers / models the host has actually registered;
  *      b) sibling plugin state files: $DSH_HOME/<any plugin dir>/{catalog,availability}.json
@@ -109,11 +109,11 @@ const SEED_ROWS = [
   { provider: 'our-free-model', model: 'jev-1.13-free', state: 'unknown', ttftMs: 0 },
 ]
 
-/** Factory default: on, ask mode, two channels, the measured-available free models checked, cap 4. */
+/** Factory default: on, proactive mode, two channels, the measured-available free models checked, cap 4. */
 const DEFAULT_CONFIG = {
   version: CONFIG_VERSION,
   enabled: true,
-  mode: 'ask',
+  mode: 'proactive',
   peer: DEFAULT_PEER,
   discover: { llm: true, siblings: true },
   channels: { workflow: true, subagent: true, experts: false, teams: false },
@@ -154,6 +154,22 @@ const DEFAULT_CONFIG = {
   onboarding: { seen: false },
   notes: '',
 }
+
+/**
+ * The four initiative modes, in the order the panel shows them.
+ *
+ * `proactive` is the factory default and sits deliberately between the two extremes: the main agent
+ * scans for a split on its own and hands out low-risk mechanical blocks without being asked, while
+ * anything expensive (a team, an Agency expert, a non-free lane, a write) still costs one question.
+ * `ask` keeps the old "propose first, wait for the nod"; `auto` drops the question entirely.
+ */
+const MODES = ['off', 'ask', 'proactive', 'auto']
+
+/**
+ * Panel labels. `renderPolicy` reuses them verbatim, so the mode the user picked in the panel reads
+ * the same inside the injected text and the panel preview can never disagree with what the agent got.
+ */
+const MODE_LABEL = { off: '关闭', ask: '先问我', proactive: '主动派', auto: '直接派' }
 
 export function apply(ctx, config) {
   const logger = ctx.logger ?? console
@@ -347,10 +363,28 @@ export function apply(ctx, config) {
 // ── Policy text ─────────────────────────────────────────────────────────────────
 
 /**
+ * The one dispatch rule whose wording changes with the mode: how eagerly this round's split goes out,
+ * and where exactly the question boundary sits. `proactive` is the middle setting — low-risk mechanical
+ * blocks leave on their own (with a one-line notice), everything expensive costs one question first.
+ */
+function modeRule(mode, config) {
+  if (mode === 'ask') {
+    return '先问我模式：把你扫出来的分工方案（哪几块、几个帮手、各做什么）主动说给用户听，等一句同意再派——给出具体的块，用户才好点头；不要退回成「要不要派帮手」这种空问题。'
+  }
+  if (mode === 'proactive') {
+    const above = Math.max(1, Math.min(3, Number(config.maxHelpers ?? DEFAULT_CONFIG.maxHelpers)))
+    return `主动派模式：低风险机械活（只读检索、多份调研、逐项审计、抄改重排、翻译、格式化、初稿）够格就直接派，一边派一边一句话报备，不等回复；高成本动作先问一句再动手——建 Agent Teams、召唤 Agency 专家、走非免费车道、写/删/提交/发布、或一次铺开超过 ${above} 个帮手。`
+  }
+  return '直接派模式：满足上面的条件就直接派，不必先问。'
+}
+
+/**
  * Renders config + roster into the policy section injected to the main agent.
  *
  * The wording is deliberate, so the model cannot improvise:
  *   - off means an explicit ban on dispatching, not "allowed but unchecked";
+ *   - the mode sets the initiative: the agent scans for a split on its own instead of waiting to be told,
+ *     and only the mode decides whether that split goes out immediately or after one question;
  *   - the helper list carries **checked** models only, each labelled host-registered, lane-verified or unverified reference;
  *   - the dispatch rules spell out what may be handed out and what must stay here, because saving tokens
  *     means moving self-contained work out, not moving the key decisions out;
@@ -376,8 +410,16 @@ function renderPolicy(config, roster) {
   const autoTeam = teamsArmed && plan.enabled === true && plan.autoTeam === true
 
   const lines = []
-  lines.push(`【帮手调度台 · 已开启｜模式：${mode === 'auto' ? '自动' : '询问'}】`)
+  lines.push(`【帮手调度台 · 已开启｜模式：${MODE_LABEL[mode] ?? mode}】`)
+  lines.push('默认姿态：主动分工，不等用户点名——用户不主动安排才是常态。每轮开工第一件事就是扫一眼「这活里有没有能拆出去的独立块」，扫到够格的就按本模式的节奏处理（见下面「派活规则」里那条模式规则），扫不到就自己干。别把「要不要派帮手」这种空问题丢回给用户：主动是给出方案，不是抛出问题。')
   lines.push('分工原则：免费车道的帮手承担「简单、机械、自包含、不依赖主会话上下文」的活（批量检索、逐项审计、抄改重排、列清单、翻译、格式化、初稿）；你（主 agent，付费车道）只保留最复杂、最难、最需要判断并在意后果的部分——架构与关键设计、跨模块推理、正确性与安全判断、分歧裁决、用户要的最终交付。简单的活优先派出去，难的活自己做。')
+  if (enabledChannels.length > 0) {
+    lines.push('执行顺序：完成定位任务所需的最少读取后，先分工再深挖；不要把整批文件读完、方案想完、初稿写完后才补派。进入新阶段或发现新的独立块时再判断一次，不是只在开头想一次。')
+    lines.push('单块也值得派：一个帮手拿走一份独立材料，你推进主线就已成立；不必凑够两个帮手，也不必等到值得建队。先走已开启、成本最低且支持目标模型的通道，建队门槛不是普通派活门槛；无匹配工具或可用模型时自己推进，不空等。')
+    lines.push(mode === 'ask'
+      ? '本轮落实：发现合适的独立块就先给出具体分工方案并等待同意；已有同意覆盖该块时直接执行，范围或成本变化再问。'
+      : '本轮落实：发现合适且符合本模式成本边界的独立块，就在展开主线前实际调用派活工具；口头说「可以分工」不算派活。「我自己也会」「看着简单」「省一次调用」都不是包揽整批工作的理由。')
+  }
 
   if (enabledChannels.length === 0) {
     lines.push('当前没有勾选任何帮手通道 —— 也就是说这轮不允许派活（面板里勾选通道后才算数）。')
@@ -408,11 +450,16 @@ function renderPolicy(config, roster) {
   // ── Pre-flight estimate: decide *before* starting whether this can be handed out at all ──
   lines.push('')
   if (plan.enabled === true) {
-    lines.push('动工前预估（每次动工先做这一步，一句话的估算即可）：')
-    lines.push('- 三问：这份活能拆成几块互不依赖的独立材料吗？每一块都能写成自包含 prompt、不依赖主会话上下文吗？做错能不能一眼看出来？')
-    lines.push('- 三问都是「是」→ 值得派；否则自己干，不要为了派而派，也不要为了并行而硬拆。')
+    lines.push('动工前预估（每轮开工的第一件事，一句话就够，别写成清单）：')
+    lines.push('- 三问：逐块判断能否独立交付、能否写成自包含 prompt、能否用明确验收口径核对；不要求所有子件都适合派活。')
+    lines.push(`- 顺手就该派的信号（看到任意一条就更该往「派」的方向想）：用户给的是一个大目标、底下含多个子件；出现「分别 / 各 / 逐一 / 批量 / 对比 N 个」；要读多份文件或查多个来源；重复的格式化 / 翻译 / 抄改 / 列清单；某一块预计超过 ${config.minSteps} 步但能切成自包含的小块；派出去的那段时间你能先干别的。`)
+    lines.push('- 对一个块三问都是「是」→ 值得派；剩余设计与裁决留给主 agent，不因另一块需要判断而包办整份任务，也不要为了派而派或硬拆。')
     if (autoTeam) {
-      lines.push(`- 拆出 ≥ ${plan.minBlocks} 块互不依赖、每块都能写成自包含 prompt 的活 → 直接调用 agent_teams_create 建队、把每块写成一条任务派下去，不必等用户本轮再提一次${mode === 'auto' ? '。' : '（询问模式下建队前仍先问用户一次）。'}`)
+      const tail = mode === 'auto'
+        ? '，不必等用户本轮再提一次。'
+        : `；建队属于高成本动作，${MODE_LABEL[mode]}模式下先问用户一句再动手。`
+      lines.push(`- 拆出 ≥ ${plan.minBlocks} 块互不依赖且确需共享任务板时，按模式调用 agent_teams_create 建队${tail}`)
+      lines.push('- 建队确认只阻塞建队：可独立处理的低风险块先走已开启的轻量通道，仍按本模式的确认边界执行，不等建队。')
     } else if (teamsArmed) {
       lines.push(`- 拆出 ≥ ${plan.minBlocks} 块互不依赖的活时可以建队，但本轮没开「预估通过就直接建队」，仍需用户明确要求才调用 agent_teams_create。`)
     } else {
@@ -456,13 +503,14 @@ function renderPolicy(config, roster) {
   rules.push('只有「能写成一段自包含 prompt」「不依赖主会话上下文」「产出是一份独立材料」的任务才派出去；一体化设计、关键判断、最终交付由你自己完成。')
   rules.push(`一次最多同时派 ${config.maxHelpers} 个帮手${primaryHint}；同一批任务请在一条消息里一起发出。`)
   if (config.longTaskOnly === true) {
-    rules.push(`只在本任务预计超过 ${config.minSteps} 步、或确实能并行拆分时才考虑派活；一句能答完的短任务不要派。`)
+    rules.push(`本任务预计超过 ${config.minSteps} 步、或已有合格独立块时，就按模式派出，不再只是考虑；步数按开工前预估，不要先累计执行步数。一句能答完的短任务不要派。`)
   }
-  rules.push(mode === 'auto' ? '自动模式：满足上面的条件就直接派，不必先问。' : '询问模式：派活前先用一句话问用户「要不要派帮手、派几个」，得到同意再派。')
+  rules.push(modeRule(mode, config))
   rules.push('帮手的 prompt 必须自包含：写清目标、可用资料路径、约束与验收口径（它们看不到你的对话历史）。')
   rules.push('帮手给的是材料不是事实：收到后你自己核对，再从主会话落最终交付。')
   rules.push('免费车道可能限流或按地区放行，失败就自己接手，同一个帮手不要重试超过一次。')
   rules.push('省 token 的机理：你每往前一步都要重发完整上下文（按 cacheMiss 计费），而帮手各自独立上下文、且免费车道输入输出零成本——所以「把简单活挪出去」通常比自己接完更省；但核对与拍板那一步永远留在你这里。')
+  rules.push('反模式（别再犯）：等用户开口才派；把「要不要派帮手」当问题问回去；为了显得积极而硬拆、硬凑并行；同一块活重复派给两个帮手；把拍板环节也派出去。')
   lines.push('派活规则：')
   rules.forEach((rule, index) => { lines.push(`${index + 1}. ${rule}`) })
   if (typeof config.notes === 'string' && config.notes.trim() !== '') {
@@ -736,7 +784,7 @@ function sanitizeConfig(patch, current, opts = {}) {
     return next
   }
   if (typeof patch.enabled === 'boolean') next.enabled = patch.enabled
-  if (patch.mode === 'off' || patch.mode === 'ask' || patch.mode === 'auto') next.mode = patch.mode
+  if (MODES.includes(patch.mode)) next.mode = patch.mode
   if (typeof patch.peer === 'string' && PROVIDER_RE.test(patch.peer.trim())) next.peer = patch.peer.trim()
   if (patch.discover && typeof patch.discover === 'object') {
     next.discover = {

@@ -135,12 +135,14 @@ check('GET /summary → 200 且带 config / roster / stats / preview', summary.s
 check('名册能从宿主 llm 服务枚举出 provider 与模型', Array.isArray(summaryBody?.providers) && summaryBody.providers.length >= 1 && (summaryBody?.roster?.rows ?? []).length >= 2, `providers=${summaryBody?.providers?.length} rows=${summaryBody?.roster?.rows?.length}`)
 
 const askText = sections[0].text()
-check('默认（询问模式）策略含分工原则与编号连续的派活规则', askText.includes('分工原则') && askText.includes('派活规则') && askText.includes('简单、机械、自包含') && (() => {
+check('出厂默认（主动派模式）策略含分工原则与编号连续的派活规则', askText.includes('分工原则') && askText.includes('派活规则') && askText.includes('简单、机械、自包含') && (() => {
   const numbers = [...askText.matchAll(/^(\d+)\. /gm)].map(match => Number(match[1]))
   return numbers.length >= 6 && numbers.every((value, index) => value === index + 1)
 })(), '规则编号不连续或缺少分工句子')
 
-check('默认策略带「动工前预估」与「卡住就换人」两块（v3）', askText.includes('动工前预估（每次动工先做这一步') && askText.includes('三问：这份活能拆成几块互不依赖的独立材料吗') && askText.includes('卡住就换人（本轮要求）') && askText.includes('你已经推进/等待了 6 步'), askText.slice(askText.indexOf('动工前预估'), askText.indexOf('卡住就换人')))
+check('出厂默认策略把「主动分工」写在最前面（不等用户点名）', askText.includes('模式：主动派') && askText.includes('默认姿态：主动分工，不等用户点名') && askText.includes('别把「要不要派帮手」这种空问题丢回给用户'), askText.slice(0, 120))
+
+check('出厂默认策略带「动工前预估」与「卡住就换人」两块（v3）', askText.includes('动工前预估（每轮开工的第一件事') && askText.includes('三问：逐块判断能否独立交付') && askText.includes('卡住就换人（本轮要求）') && askText.includes('你已经推进/等待了 6 步'), askText.slice(askText.indexOf('动工前预估'), askText.indexOf('卡住就换人')))
 
 const armedKey = 'our-free-model:nemotron-3-ultra-free'
 const saved = await call('POST', '/config', {
@@ -168,7 +170,7 @@ const savedBody = json(saved)
 check('POST /config → 200 且写盘无错', saved.status === 200 && savedBody !== undefined && !savedBody.writeError, `status=${saved.status} writeError=${savedBody?.writeError}`)
 
 const autoText = sections[0].text()
-check('保存后策略立刻变成自动模式（无需重启）', autoText.includes('模式：自动') && autoText.includes('自动模式：满足上面的条件就直接派'), autoText.slice(0, 60))
+check('保存后策略立刻变成直接派模式（无需重启）', autoText.includes('模式：直接派') && autoText.includes('直接派模式：满足上面的条件就直接派'), autoText.slice(0, 60))
 check('策略只列已勾选的帮手：取消勾选的行消失，新勾选的行出现', autoText.includes(`- ${armedKey}（`) && !autoText.includes('our-free-model:ling-3.0-flash-fin-free') && autoText.includes('our-free-model:muse-spark-1.3-contributor-free'), autoText.slice(autoText.indexOf('勾选可用的帮手模型'), autoText.indexOf('派活规则')))
 check('并发上限 / 步数门槛 / 附加要求 / 默认主力都写进策略', autoText.includes('最多同时派 3 个帮手') && autoText.includes('超过 5 步') && autoText.includes('冒烟测试备注') && autoText.includes('★默认'))
 check('勾了但地区受限的帮手会被明确警示', autoText.includes('地区受限') && autoText.includes('标了地区受限/不可用的别用'))
@@ -194,9 +196,20 @@ const tuned = await call('POST', '/config', {
   },
 })
 const tunedText = sections[0].text()
-check('勾上 Agent Teams 且预估通过 → 策略允许直接建队', tuned.status === 200 && tunedText.includes('直接调用 agent_teams_create 建队') && !tunedText.includes('Agent Teams 本轮未授权'), tunedText.slice(0, 60))
+check('勾上 Agent Teams 且预估通过 → 策略允许直接建队', tuned.status === 200 && tunedText.includes('按模式调用 agent_teams_create 建队') && !tunedText.includes('Agent Teams 本轮未授权'), tunedText.slice(0, 60))
 check('建队门槛与兜底对象按面板取值写进策略', tunedText.includes('拆出 ≥ 3 块互不依赖') && tunedText.includes('你已经推进/等待了 12 步') && tunedText.includes('同一个活最多改派 2 次') && tunedText.includes('交给 our-free-model:muse-spark-1.3-contributor-free 收尾'))
 check('勾上 teams 后观察 / 改派改用 Agent Teams 工具', tunedText.includes('agent_teams_status 看任务板和成员状态') && tunedText.includes('agent_teams_reassign_task') && tunedText.includes('成员路由绑着模型'))
+
+// ── The middle mode over the real HTTP path: exactly the request the panel sends ──
+const toProactive = await call('POST', '/config', { body: { patch: { mode: 'proactive' } } })
+const proactiveText = sections[0].text()
+check('POST /config 切到「主动派」→ 低风险直派、高成本先问', toProactive.status === 200 && proactiveText.includes('模式：主动派') && proactiveText.includes('默认姿态：主动分工，不等用户点名') && proactiveText.includes('低风险机械活') && proactiveText.includes('一边派一边一句话报备') && proactiveText.includes('高成本动作先问一句再动手'), proactiveText.slice(proactiveText.indexOf('模式：主动派'), proactiveText.indexOf('分工原则')))
+check('主动派模式下建队仍要先问一句（高成本动作不当场拍板）', proactiveText.includes('建队属于高成本动作，主动派模式下先问用户一句再动手'))
+check('切模式不动已勾选的帮手与门槛', proactiveText.includes(`- ${armedKey}（`) && proactiveText.includes('最多同时派 3 个帮手') && proactiveText.includes('拆出 ≥ 3 块互不依赖'))
+
+const toAsk = await call('POST', '/config', { body: { patch: { mode: 'ask' } } })
+const askAgainText = sections[0].text()
+check('POST /config 切回「先问我」→ 不再声称会直接派', toAsk.status === 200 && askAgainText.includes('模式：先问我') && askAgainText.includes('先问我模式：把你扫出来的分工方案') && !askAgainText.includes('一边派一边一句话报备'))
 
 const tunedSummary = json(await call('GET', '/summary'))
 const teamsChannel = (tunedSummary?.channels ?? []).find(channel => channel.id === 'teams')
@@ -224,7 +237,7 @@ check('POST /config 能记下「引导已看过」', guided.status === 200 && gu
 const reset = await call('POST', '/reset')
 const resetBody = json(reset)
 const resetText = sections[0].text()
-check('POST /reset → 回到出厂默认（真替换：手填的帮手键也被清掉）', reset.status === 200 && resetBody?.config?.mode === 'ask' && resetBody?.config?.maxHelpers === 4 && resetBody?.config?.helpers?.['fake-provider:custom-model'] === undefined && resetText.includes('模式：询问'), JSON.stringify({ mode: resetBody?.config?.mode, maxHelpers: resetBody?.config?.maxHelpers, extraKey: resetBody?.config?.helpers?.['fake-provider:custom-model'] }))
+check('POST /reset → 回到出厂默认（真替换：手填的帮手键也被清掉）', reset.status === 200 && resetBody?.config?.mode === 'proactive' && resetBody?.config?.maxHelpers === 4 && resetBody?.config?.helpers?.['fake-provider:custom-model'] === undefined && resetText.includes('模式：主动派'), JSON.stringify({ mode: resetBody?.config?.mode, maxHelpers: resetBody?.config?.maxHelpers, extraKey: resetBody?.config?.helpers?.['fake-provider:custom-model'] }))
 const resetDisk = JSON.parse(fs.readFileSync(configPath, 'utf8'))
 check('落盘的默认配置同样不含手填键，且默认勾选数回到出厂值', resetDisk.helpers['fake-provider:custom-model'] === undefined && Object.values(resetDisk.helpers).filter(item => item?.enabled === true).length === 6, `armedOnDisk=${Object.values(resetDisk.helpers).filter(item => item?.enabled === true).length}`)
 check('POST /reset 也把 plan / failover 恢复出厂（含被调过的门槛与兜底）', resetBody?.config?.plan?.minBlocks === 2 && resetBody?.config?.plan?.autoTeam === true && resetBody?.config?.failover?.waitSteps === 6 && resetBody?.config?.failover?.maxRetry === 1 && resetBody?.config?.failover?.fallback === 'main', JSON.stringify({ plan: resetBody?.config?.plan, failover: resetBody?.config?.failover }))
