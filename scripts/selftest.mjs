@@ -1,7 +1,7 @@
 /**
  * dsh-agent-dispatch unit self-test (host half).
  * No test framework: writes its own assert, outputs TAP-like ok/not ok, with a summary at the end.
- * Run: node <repo-path>\scripts\selftest.mjs
+ * Run: node scripts/selftest.mjs
  */
 
 import { __test } from '../index.js'
