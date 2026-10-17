@@ -1,6 +1,6 @@
 # Publish and Listing Runbook
 
-Current state on this machine (verified 2026-09-28): DNS and HTTPS for `github.com`, `api.github.com`, and `registry.npmjs.org` all work; but `git credential.helper` is empty, `cmdkey` has no GitHub credentials, neither `~/.npmrc` nor `~/.git-credentials` exists, `GITHUB_TOKEN` / `GH_TOKEN` / `NPM_TOKEN` are not set, the `gh` CLI is not installed, and `~/.ssh` is empty.
+Prerequisites: DNS and HTTPS reachability for `github.com`, `api.github.com`, and `registry.npmjs.org`; and a configured `git credential.helper` (or a `GITHUB_TOKEN` exported for the one step that needs it). Check each on the machine you are publishing from instead of assuming a particular machine state.
 
 **Conclusion: complete the steps that can be done locally now (already done). The steps that need credentials must be authorized by the repository owner.**
 

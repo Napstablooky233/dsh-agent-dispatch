@@ -43,8 +43,9 @@ The host half runs `apply()` once at startup, so a restart is required before th
 - Open **Settings → 帮手调度 (Agent Dispatch)** in the DSH web GUI.
 - Or from the local machine:
   ```bash
-  curl http://127.0.0.1:3080/api/agent-dispatch/health
+  curl http://127.0.0.1:<gui-port>/api/agent-dispatch/health
   ```
+  `<gui-port>` is the port the DSH web GUI is actually listening on.
 
 ## Configure
 

@@ -20,7 +20,7 @@
 
 ## 安装
 
-插件目录：`<repo-path>`（本仓库）。两条路：
+插件目录：本仓库在本机的克隆（`<repo-path>`）。两条路：
 
 ### A. 自动改 profile 清单（推荐）
 
@@ -36,7 +36,7 @@ node scripts/install-into-profile.mjs --revert   # 撤回到备份
 
 ### B. 手动
 
-等价于手动改 `C:\Users\<user>\.dsh\profiles\web\package.json` 两处：
+等价于手动改 `<DSH_HOME>/profiles/<profile>/package.json` 两处：
 
 1. `dependencies` 里加：
    ```json
@@ -96,7 +96,7 @@ node scripts/install-into-profile.mjs --revert   # 撤回到备份
 
 ## 配置键表
 
-落盘于 `$DSH_HOME/agent-dispatch/config.json`（默认 `C:\Users\<user>\.dsh\agent-dispatch\config.json`），原子写（tmp + rename）。面板每次打开重新读取，手改此文件与面板改等价。
+落盘于 `$DSH_HOME/agent-dispatch/config.json`，原子写（tmp + rename）。面板每次打开重新读取，手改此文件与面板改等价。
 
 | 键 | 类型 | 默认 | 作用 |
 | --- | --- | --- | --- |

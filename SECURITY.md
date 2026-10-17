@@ -9,7 +9,7 @@
 
 ## Reporting a vulnerability
 
-Prefer the repository's private **Report a vulnerability** advisory on GitHub. If that is not available, email **Napstablooky233@users.noreply.github.com**.
+Prefer the repository's private **Report a vulnerability** advisory on GitHub. That advisory is the reporting channel; no email address is published for this project.
 
 Include:
 - Plugin version (`dsh-agent-dispatch`)

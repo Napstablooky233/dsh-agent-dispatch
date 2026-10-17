@@ -20,7 +20,7 @@ Division of labor (hard-coded in injected text): simple, mechanical, self-contai
 
 ## Install
 
-Plugin directory: `<repo-path>` (this repo). Two ways:
+Plugin directory: your local clone of this repo (`<repo-path>`). Two ways:
 
 ### A. Auto-edit profile manifest (recommended)
 
@@ -36,7 +36,7 @@ The script touches only one file: `<DSH_HOME>/profiles/<profile>/package.json` i
 
 ### B. Manual
 
-Equivalent to manually editing `C:\Users\<user>\.dsh\profiles\web\package.json` in two places:
+Equivalent to manually editing `<DSH_HOME>/profiles/<profile>/package.json` in two places:
 
 1. In `dependencies` add:
    ```json
@@ -96,7 +96,7 @@ Switching either one off does not remove the text — it replaces it with an exp
 
 ## Configuration keys
 
-Persisted to `$DSH_HOME/agent-dispatch/config.json` (default `C:\Users\<user>\.dsh\agent-dispatch\config.json`), atomic write (tmp + rename). Panel re-reads on every open; hand-editing this file is equivalent to panel changes.
+Persisted to `$DSH_HOME/agent-dispatch/config.json`, atomic write (tmp + rename). Panel re-reads on every open; hand-editing this file is equivalent to panel changes.
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
